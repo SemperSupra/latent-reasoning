@@ -196,6 +196,7 @@ def train_seed(
     ood_min_length: int,
     ood_max_length: int,
     ood_per_length: int,
+    evaluate_ood: bool = True,
 ) -> SeedResult:
     torch.manual_seed(seed)
     random.seed(seed)
@@ -287,7 +288,7 @@ def train_seed(
     ood_by_length = None
     mean_ood = None
 
-    if id_saturated:
+    if id_saturated and evaluate_ood:
         sampled = sampled_ood_examples(
             seed + 900000,
             min_length=ood_min_length,
@@ -332,6 +333,11 @@ def main() -> None:
     parser.add_argument("--ood-min-length", type=int, default=9)
     parser.add_argument("--ood-max-length", type=int, default=16)
     parser.add_argument("--ood-per-length", type=int, default=256)
+    parser.add_argument(
+        "--skip-ood",
+        action="store_true",
+        help="Suppress OOD generation/evaluation while tuning ID training dynamics.",
+    )
     parser.add_argument("--threads", type=int, default=2)
     args = parser.parse_args()
 
@@ -358,6 +364,7 @@ def main() -> None:
             ood_min_length=args.ood_min_length,
             ood_max_length=args.ood_max_length,
             ood_per_length=args.ood_per_length,
+            evaluate_ood=not args.skip_ood,
         )
         for seed in seeds
     ]
@@ -382,6 +389,7 @@ def main() -> None:
             "ood_min_length": args.ood_min_length,
             "ood_max_length": args.ood_max_length,
             "ood_per_length": args.ood_per_length,
+            "evaluate_ood": not args.skip_ood,
         },
         "results": [
             {
@@ -397,8 +405,9 @@ def main() -> None:
             else "parity-regime-not-yet-admitted"
         ),
         "claim_boundary": (
-            "OOD metrics are emitted only for seeds that repeatedly reached 100% "
-            "accuracy on the complete ID universe. This run does not compare latent "
+            "OOD metrics are emitted only when OOD evaluation is enabled and a seed "
+            "repeatedly reached 100% accuracy on the complete ID universe. Hyperparameter "
+            "selection runs may suppress OOD entirely. This run does not compare latent "
             "reasoning treatments."
         ),
     }
