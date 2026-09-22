@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "coconut-official",
+  "repository": "facebookresearch/coconut",
+  "exact_revision": "27273cb8cca4bb763c041a63b036d0c3b7cbbb48",
+  "default_branch_observed": "main",
+  "license": {
+    "status": "explicit",
+    "spdx_id": "MIT",
+    "evidence_path": "LICENSE"
+  },
+  "reference_environment": {
+    "python": "3.12",
+    "torch": "2.5.1",
+    "transformers": "4.46.2",
+    "datasets": "3.1.0"
+  },
+  "reference_backbone": "openai-community/gpt2",
+  "handling": "eligible-for-reproduction-and-derived-integration-subject-to-license-preservation"
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "codi-official",
+  "repository": "zhenyi4/codi",
+  "exact_revision": "2c2314662c63e9f482ebc46614ffe9af17a241e5",
+  "default_branch_observed": "main",
+  "license": {
+    "status": "unresolved",
+    "spdx_id": null,
+    "evidence_path": null,
+    "observation": "No explicit repository license file or README license statement was observed during Campaign 0001 source pinning."
+  },
+  "reference_environment": {
+    "python": "3.12",
+    "torch": "2.7.1",
+    "transformers": "4.52.4",
+    "peft": "0.15.2"
+  },
+  "reference_backbones": [
+    "gpt2",
+    "Llama-3.2-1B-Instruct"
+  ],
+  "handling": "external-reproduction-oracle-only-until-license-status-is-resolved"
+}
