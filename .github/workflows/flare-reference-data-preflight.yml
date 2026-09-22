@@ -1,0 +1,126 @@
+name: flare-reference-data-preflight
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/flare-reference-data-preflight.yml"
+      - "docs/flare-reference-data-preflight.md"
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-reference-data:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Clone exact FLaRe source
+        run: |
+          git clone --filter=blob:none https://github.com/rycolab/flare.git /tmp/flare
+          git -C /tmp/flare checkout a671eb9932620cc888757612f30845efe3304831
+          test "$(git -C /tmp/flare rev-parse HEAD)" = "a671eb9932620cc888757612f30845efe3304831"
+      - name: Verify upstream MIT license
+        run: |
+          grep -q "MIT License" /tmp/flare/LICENSE
+      - name: Independently validate parity and Dyck labels
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root=Path("/tmp/flare")
+
+          def read_lines(path):
+              # split("\n") intentionally preserves empty-string examples.
+              text=path.read_text()
+              if text.endswith("\n"):
+                  text=text[:-1]
+              return text.split("\n")
+
+          def read_labels(path):
+              return [int(x) for x in read_lines(path)]
+
+          def parity_label(line):
+              if not line.strip():
+                  return 0
+              bits=[int(x) for x in line.split()]
+              assert all(bit in (0,1) for bit in bits)
+              return sum(bits) % 2
+
+          def dyck_label(line):
+              # Upstream dyck-2-3 is Dyck-2 with a maximum nesting depth of 3.
+              stack=[]
+              if not line.strip():
+                  return 1
+              for token in line.split():
+                  assert token in {"(0", ")0", "(1", ")1"}
+                  side=token[0]
+                  kind=token[1]
+                  if side=="(":
+                      stack.append(kind)
+                      if len(stack) > 3:
+                          return 0
+                  else:
+                      if not stack or stack[-1] != kind:
+                          return 0
+                      stack.pop()
+              return int(not stack)
+
+          checks={}
+          for family, oracle in [
+              ("parity", parity_label),
+              ("dyck-2-3", dyck_label),
+          ]:
+              inputs=read_lines(root/family/"main.tok")
+              labels=read_labels(root/family/"labels.txt")
+              assert len(inputs) == len(labels) == 10000
+              predicted=[oracle(line) for line in inputs]
+              mismatches=[
+                  i for i,(a,b) in enumerate(zip(predicted,labels))
+                  if a != b
+              ]
+              assert not mismatches, (family, mismatches[:20])
+              checks[family]={
+                  "examples": len(inputs),
+                  "positive_labels": sum(labels),
+                  "empty_examples": sum(not line.strip() for line in inputs),
+                  "inputs_sha256": hashlib.sha256(
+                      (root/family/"main.tok").read_bytes()
+                  ).hexdigest(),
+                  "labels_sha256": hashlib.sha256(
+                      (root/family/"labels.txt").read_bytes()
+                  ).hexdigest(),
+                  "oracle_mismatches": 0,
+              }
+
+          receipt={
+              "schema_version":1,
+              "evidence_class":"pinned-upstream-reference-data-preflight",
+              "source":{
+                  "repository":"rycolab/flare",
+                  "revision":"a671eb9932620cc888757612f30845efe3304831",
+                  "license":"MIT",
+              },
+              "checks":checks,
+              "claim_boundary":(
+                  "This validates two pinned FLaRe released datasets against "
+                  "independently implemented mathematical oracles. It does not "
+                  "copy FLaRe data into this repository or admit public examples "
+                  "as private qualification holdouts."
+              ),
+          }
+          Path("/tmp/flare-preflight.json").write_text(
+              json.dumps(receipt, sort_keys=True)
+          )
+          print(json.dumps(receipt, indent=2, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flare-reference-data-preflight
+          path: /tmp/flare-preflight.json
+          retention-days: 14
