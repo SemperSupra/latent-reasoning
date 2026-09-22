@@ -41,12 +41,12 @@ jobs:
       - run: python -m unittest tests/test_toy_modular_walk.py -v
       - name: Run bounded learning experiment
         run: |
-          if [[ "\${{ github.event_name }}" == "push" ]]; then
+          if [[ "${{ github.event_name }}" == "push" ]]; then
             EPOCHS="8"
             SEEDS="0,1,2"
           else
-            EPOCHS="\${{ github.event.inputs.epochs || '4' }}"
-            SEEDS="\${{ github.event.inputs.seeds || '0,1' }}"
+            EPOCHS="${{ github.event.inputs.epochs || '4' }}"
+            SEEDS="${{ github.event.inputs.seeds || '0,1' }}"
           fi
           python experiments/toy_modular_walk.py \
             --epochs "$EPOCHS" \
