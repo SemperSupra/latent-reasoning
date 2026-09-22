@@ -40,7 +40,7 @@ jobs:
             SEEDS="0,1"
             EPOCHS="12"
           fi
-          python experiments/toy_capacity_sweep.py \
+          python -m experiments.toy_capacity_sweep \
             --widths "$WIDTHS" \
             --seeds "$SEEDS" \
             --epochs "$EPOCHS" \
