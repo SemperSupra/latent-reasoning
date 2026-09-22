@@ -13,6 +13,7 @@ import argparse
 import json
 import math
 import random
+import statistics
 import time
 from dataclasses import asdict, dataclass
 from typing import Iterable
@@ -114,6 +115,7 @@ class TreatmentResult:
     ood_accuracy: float
     wall_seconds: float
     parameter_count: int
+    learning_curve: list[dict[str, float]]
 
 
 @torch.no_grad()
@@ -133,6 +135,23 @@ def accuracy(
     return correct / total
 
 
+def snapshot(
+    epoch: int,
+    model: TinyReasoner,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    ood_loader: DataLoader,
+    treatment: str,
+    latent_steps: int,
+) -> dict[str, float]:
+    return {
+        "epoch": float(epoch),
+        "train_accuracy": accuracy(model, train_loader, treatment, latent_steps),
+        "validation_accuracy": accuracy(model, val_loader, treatment, latent_steps),
+        "ood_accuracy": accuracy(model, ood_loader, treatment, latent_steps),
+    }
+
+
 def train_one(
     treatment: str,
     seed: int,
@@ -142,6 +161,7 @@ def train_one(
     train_count: int,
     eval_count: int,
     batch_size: int,
+    report_epochs: set[int],
 ) -> TreatmentResult:
     torch.manual_seed(seed)
     random.seed(seed)
@@ -166,8 +186,9 @@ def train_one(
 
     started = time.perf_counter()
     observed_calls = None
+    curve: list[dict[str, float]] = []
 
-    for _ in range(epochs):
+    for epoch in range(1, epochs + 1):
         model.train()
         for input_ids, target in train_loader:
             optimizer.zero_grad(set_to_none=True)
@@ -179,43 +200,106 @@ def train_one(
             loss.backward()
             optimizer.step()
 
+        if epoch in report_epochs:
+            curve.append(
+                snapshot(
+                    epoch,
+                    model,
+                    train_eval_loader,
+                    val_loader,
+                    ood_loader,
+                    treatment,
+                    latent_steps,
+                )
+            )
+
     elapsed = time.perf_counter() - started
     assert observed_calls is not None
+
+    if curve and int(curve[-1]["epoch"]) == epochs:
+        final = curve[-1]
+    else:
+        final = snapshot(
+            epochs,
+            model,
+            train_eval_loader,
+            val_loader,
+            ood_loader,
+            treatment,
+            latent_steps,
+        )
+        curve.append(final)
 
     return TreatmentResult(
         treatment=treatment,
         seed=seed,
         latent_steps=latent_steps,
         forward_calls=observed_calls,
-        train_accuracy=accuracy(model, train_eval_loader, treatment, latent_steps),
-        validation_accuracy=accuracy(model, val_loader, treatment, latent_steps),
-        ood_accuracy=accuracy(model, ood_loader, treatment, latent_steps),
+        train_accuracy=final["train_accuracy"],
+        validation_accuracy=final["validation_accuracy"],
+        ood_accuracy=final["ood_accuracy"],
         wall_seconds=elapsed,
         parameter_count=sum(p.numel() for p in model.parameters()),
+        learning_curve=curve,
     )
 
 
-def aggregate(results: Iterable[TreatmentResult]) -> dict[str, dict[str, float]]:
+def summarize(values: list[float]) -> dict[str, float]:
+    return {
+        "mean": statistics.mean(values),
+        "pstdev": statistics.pstdev(values) if len(values) > 1 else 0.0,
+        "min": min(values),
+        "max": max(values),
+    }
+
+
+def aggregate(results: Iterable[TreatmentResult]) -> dict[str, dict[str, object]]:
     groups: dict[str, list[TreatmentResult]] = {}
     for result in results:
         groups.setdefault(result.treatment, []).append(result)
 
-    summary: dict[str, dict[str, float]] = {}
+    summary: dict[str, dict[str, object]] = {}
     for treatment, rows in groups.items():
         summary[treatment] = {
-            "mean_train_accuracy": sum(r.train_accuracy for r in rows) / len(rows),
-            "mean_validation_accuracy": sum(r.validation_accuracy for r in rows) / len(rows),
-            "mean_ood_accuracy": sum(r.ood_accuracy for r in rows) / len(rows),
-            "mean_wall_seconds": sum(r.wall_seconds for r in rows) / len(rows),
-            "forward_calls": float(rows[0].forward_calls),
+            "train_accuracy": summarize([r.train_accuracy for r in rows]),
+            "validation_accuracy": summarize([r.validation_accuracy for r in rows]),
+            "ood_accuracy": summarize([r.ood_accuracy for r in rows]),
+            "wall_seconds": summarize([r.wall_seconds for r in rows]),
+            "forward_calls": rows[0].forward_calls,
         }
     return summary
+
+
+def paired_analysis(results: list[TreatmentResult]) -> dict[str, object]:
+    by_treatment = {
+        treatment: {r.seed: r for r in results if r.treatment == treatment}
+        for treatment in ("direct", "serial-control", "latent")
+    }
+    seeds = sorted(set.intersection(*(set(rows) for rows in by_treatment.values())))
+
+    comparisons: dict[str, object] = {}
+    for reference in ("direct", "serial-control"):
+        for metric in ("validation_accuracy", "ood_accuracy"):
+            deltas = [
+                getattr(by_treatment["latent"][seed], metric)
+                - getattr(by_treatment[reference][seed], metric)
+                for seed in seeds
+            ]
+            comparisons[f"latent_minus_{reference}_{metric}"] = {
+                "by_seed": {str(seed): delta for seed, delta in zip(seeds, deltas)},
+                "mean": statistics.mean(deltas),
+                "pstdev": statistics.pstdev(deltas) if len(deltas) > 1 else 0.0,
+                "all_positive": all(delta > 0 for delta in deltas),
+            }
+
+    return {"paired_seeds": seeds, "comparisons": comparisons}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seeds", default="0,1,2")
     parser.add_argument("--epochs", type=int, default=8)
+    parser.add_argument("--report-epochs", default="1,2,4,8")
     parser.add_argument("--train-count", type=int, default=1024)
     parser.add_argument("--eval-count", type=int, default=256)
     parser.add_argument("--batch-size", type=int, default=128)
@@ -225,9 +309,15 @@ def main() -> None:
 
     torch.set_num_threads(args.threads)
     seeds = [int(item) for item in args.seeds.split(",") if item.strip()]
-    treatments = ("direct", "serial-control", "latent")
+    requested_reports = {
+        int(item) for item in args.report_epochs.split(",") if item.strip()
+    }
+    report_epochs = {epoch for epoch in requested_reports if 1 <= epoch <= args.epochs}
+    report_epochs.add(args.epochs)
 
+    treatments = ("direct", "serial-control", "latent")
     results: list[TreatmentResult] = []
+
     for treatment in treatments:
         for seed in seeds:
             results.append(
@@ -239,11 +329,24 @@ def main() -> None:
                     train_count=args.train_count,
                     eval_count=args.eval_count,
                     batch_size=args.batch_size,
+                    report_epochs=report_epochs,
                 )
             )
 
+    aggregated = aggregate(results)
+    best_mean_train = max(
+        float(aggregated[treatment]["train_accuracy"]["mean"])
+        for treatment in treatments
+    )
+    if best_mean_train >= 0.90:
+        learnability = "well-learned"
+    elif best_mean_train >= 0.60:
+        learnability = "partially-learned"
+    else:
+        learnability = "underfit"
+
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "evidence_class": "toy-system-learning",
         "task": {
             "name": "modular-walk-v0",
@@ -255,13 +358,16 @@ def main() -> None:
         "settings": {
             "seeds": seeds,
             "epochs": args.epochs,
+            "report_epochs": sorted(report_epochs),
             "train_count": args.train_count,
             "eval_count": args.eval_count,
             "batch_size": args.batch_size,
             "latent_steps": args.latent_steps,
         },
         "results": [asdict(result) for result in results],
-        "aggregate": aggregate(results),
+        "aggregate": aggregated,
+        "paired_analysis": paired_analysis(results),
+        "learnability_status": learnability,
         "claim_boundary": (
             "This experiment is toy-system mechanism evidence. It does not establish "
             "that latent reasoning improves pretrained language-model capability."

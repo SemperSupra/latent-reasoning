@@ -18,11 +18,11 @@ on:
       epochs:
         description: "Training epochs per treatment/seed"
         required: false
-        default: "8"
+        default: "40"
       seeds:
         description: "Comma-separated seeds"
         required: false
-        default: "0,1,2"
+        default: "0,1,2,3,4"
 
 permissions:
   contents: read
@@ -42,14 +42,17 @@ jobs:
       - name: Run bounded learning experiment
         run: |
           if [[ "${{ github.event_name }}" == "push" ]]; then
-            EPOCHS="8"
-            SEEDS="0,1,2"
+            EPOCHS="40"
+            SEEDS="0,1,2,3,4"
+            REPORT_EPOCHS="1,2,4,8,16,24,32,40"
           else
             EPOCHS="${{ github.event.inputs.epochs || '4' }}"
             SEEDS="${{ github.event.inputs.seeds || '0,1' }}"
+            REPORT_EPOCHS="1,2,4"
           fi
           python experiments/toy_modular_walk.py \
             --epochs "$EPOCHS" \
+            --report-epochs "$REPORT_EPOCHS" \
             --seeds "$SEEDS" \
             --train-count 768 \
             --eval-count 192 \
@@ -61,10 +64,17 @@ jobs:
           python - <<'PY'
           import json
           p = json.load(open("/tmp/toy-learning.json"))
+          assert p["schema_version"] == 2
           assert p["evidence_class"] == "toy-system-learning"
           assert set(p["aggregate"]) == {"direct", "serial-control", "latent"}
           assert p["aggregate"]["serial-control"]["forward_calls"] == p["aggregate"]["latent"]["forward_calls"]
-          print(json.dumps(p["aggregate"], indent=2, sort_keys=True))
+          assert "paired_analysis" in p
+          assert p["learnability_status"] in {"underfit", "partially-learned", "well-learned"}
+          print(json.dumps({
+              "aggregate": p["aggregate"],
+              "paired_analysis": p["paired_analysis"],
+              "learnability_status": p["learnability_status"],
+          }, indent=2, sort_keys=True))
           PY
       - uses: actions/upload-artifact@v4
         with:
