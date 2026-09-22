@@ -33,3 +33,25 @@ Parity also has:
 - no third-party code or dataset dependency.
 
 Once all selected seeds repeatedly reach 100% ID, the same frozen regime can be used for compute-matched direct / serial-control / latent comparisons.
+
+
+## WP5g controlled follow-up
+
+The first three-seed main run held the final curriculum stage to 300 epochs.
+Seed 0 saturated the complete lengths-1–8 ID universe, while seeds 1 and 2 did
+not. Because the same architecture demonstrated that saturation is reachable,
+WP5g changes **only** the maximum training budget to 1000 epochs per stage.
+
+Frozen across WP5f -> WP5g:
+
+- model width, depth, and attention heads;
+- AdamW optimizer and learning rate;
+- exhaustive curriculum stages 2, 4, 8;
+- batch size;
+- three consecutive 100% checks required for saturation;
+- three seeds;
+- OOD lengths and sampling rule.
+
+If the remaining seeds still fail to saturate, the next experiment must change a
+training/mechanism variable explicitly rather than silently increasing multiple
+resources.
