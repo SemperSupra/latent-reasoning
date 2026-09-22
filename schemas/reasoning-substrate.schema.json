@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SemperSupra/latent-reasoning/schemas/reasoning-substrate.schema.json",
+  "title": "Latent Reasoning Substrate Descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "class",
+    "implementation",
+    "compute_policy"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._/-]*$"
+    },
+    "class": {
+      "enum": [
+        "direct",
+        "textual-cot",
+        "serial-control",
+        "latent"
+      ]
+    },
+    "implementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "revision"
+      ],
+      "properties": {
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "compute_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "none",
+            "fixed",
+            "adaptive"
+          ]
+        },
+        "steps": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "min_steps": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "max_steps": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "budget_basis": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "enum": [
+              "adapter",
+              "reasoner",
+              "projection",
+              "controller",
+              "other"
+            ]
+          },
+          "artifact_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^([a-f0-9]{64})?$"
+          }
+        }
+      }
+    },
+    "configuration": {
+      "type": "object"
+    }
+  }
+}
