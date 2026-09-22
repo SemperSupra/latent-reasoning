@@ -1,0 +1,87 @@
+name: parity-saturation
+
+on:
+  pull_request:
+    paths:
+      - "experiments/parity_saturation.py"
+      - "tests/test_parity_saturation.py"
+      - ".github/workflows/parity-saturation.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "experiments/parity_saturation.py"
+      - "tests/test_parity_saturation.py"
+      - ".github/workflows/parity-saturation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  direct-saturation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU PyTorch
+        run: python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m unittest tests/test_parity_saturation.py -v
+      - name: Run curriculum saturation experiment
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            SEEDS="0,1,2"
+            STAGES="2,4,8"
+            MAX_EPOCHS="300"
+            OOD_MAX="16"
+            OOD_PER_LENGTH="256"
+          else
+            SEEDS="0"
+            STAGES="2,4"
+            MAX_EPOCHS="80"
+            OOD_MAX="8"
+            OOD_PER_LENGTH="64"
+          fi
+
+          FINAL_STAGE="$(echo "$STAGES" | awk -F, '{print $NF}')"
+          OOD_MIN="$((FINAL_STAGE + 1))"
+
+          python -m experiments.parity_saturation \
+            --seeds "$SEEDS" \
+            --stages "$STAGES" \
+            --max-epochs-per-stage "$MAX_EPOCHS" \
+            --ood-min-length "$OOD_MIN" \
+            --ood-max-length "$OOD_MAX" \
+            --ood-per-length "$OOD_PER_LENGTH" \
+            > /tmp/parity-saturation.json
+      - name: Validate receipt contract
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/parity-saturation.json"))
+          assert p["evidence_class"] == "benchmark-regime-saturation"
+          assert p["family"] == "parity"
+          assert p["treatment"] == "direct"
+          assert p["decision"] in {
+              "parity-regime-admitted-for-ood-comparison",
+              "parity-regime-not-yet-admitted",
+          }
+          for result in p["results"]:
+              if result["id_saturated"]:
+                  assert result["final_id_accuracy"] == 1.0
+                  assert result["ood_accuracy_by_length"] is not None
+              else:
+                  assert result["ood_accuracy_by_length"] is None
+          print(json.dumps({
+              "all_seeds_id_saturated": p["all_seeds_id_saturated"],
+              "decision": p["decision"],
+              "results": p["results"],
+          }, indent=2, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parity-saturation-receipt
+          path: /tmp/parity-saturation.json
+          retention-days: 14
