@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 import json
+import sys
 import time
+from pathlib import Path
 
 import torch
 
-from test_latent_mechanics import build_tiny_model, direct_forward, recurrent_forward
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from tests.test_latent_mechanics import (  # noqa: E402
+    build_tiny_model,
+    direct_forward,
+    recurrent_forward,
+)
 
 
 def timed(fn):
