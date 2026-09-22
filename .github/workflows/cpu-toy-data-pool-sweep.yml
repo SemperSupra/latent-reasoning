@@ -1,0 +1,74 @@
+name: cpu-toy-data-pool-sweep
+
+on:
+  pull_request:
+    paths:
+      - "experiments/toy_data_pool_sweep.py"
+      - "tests/test_toy_data_pool_sweep.py"
+      - ".github/workflows/cpu-toy-data-pool-sweep.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "experiments/toy_data_pool_sweep.py"
+      - "tests/test_toy_data_pool_sweep.py"
+      - ".github/workflows/cpu-toy-data-pool-sweep.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU PyTorch
+        run: python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m unittest tests/test_toy_data_pool_sweep.py -v
+      - name: Run fixed-compute data-pool sweep
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            COUNTS="768,3072,12288"
+            SEEDS="0,1,2,3,4"
+            UPDATES="240"
+          else
+            COUNTS="768,3072"
+            SEEDS="0,1"
+            UPDATES="72"
+          fi
+          python -m experiments.toy_data_pool_sweep \
+            --train-counts "$COUNTS" \
+            --seeds "$SEEDS" \
+            --updates "$UPDATES" \
+            --eval-count 192 \
+            --batch-size 128 \
+            > /tmp/data-pool-sweep.json
+      - name: Validate receipt
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/data-pool-sweep.json"))
+          assert p["evidence_class"] == "toy-baseline-learnability"
+          assert p["controlled_variable"] == "unique_training_pool_size"
+          assert p["decision"] in {
+              "freeze-smallest-qualified-data-pool",
+              "data-pool-alone-did-not-establish-learnability",
+          }
+          examples_seen={v["examples_seen_per_run"] for v in p["aggregate"].values()}
+          assert len(examples_seen) == 1
+          print(json.dumps({
+              "aggregate": p["aggregate"],
+              "validation_gain_vs_smallest_pool": p["validation_gain_vs_smallest_pool"],
+              "qualified_train_counts": p["qualified_train_counts"],
+              "decision": p["decision"],
+          }, indent=2, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: toy-data-pool-sweep-receipt
+          path: /tmp/data-pool-sweep.json
+          retention-days: 14
