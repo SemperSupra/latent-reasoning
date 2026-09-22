@@ -34,7 +34,7 @@ jobs:
           if [[ "${{ github.event_name }}" == "push" ]]; then
             SEEDS="0,1,2"
             STAGES="2,4,8"
-            MAX_EPOCHS="300"
+            MAX_EPOCHS="1000"
             OOD_MAX="16"
             OOD_PER_LENGTH="256"
           else
