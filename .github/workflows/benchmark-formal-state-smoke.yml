@@ -1,0 +1,59 @@
+name: benchmark-formal-state-smoke
+
+on:
+  pull_request:
+    paths:
+      - "benchmarks/formal_state.py"
+      - "benchmarks/regimes/formal-state-v1.json"
+      - "tests/test_formal_state_benchmarks.py"
+      - ".github/workflows/benchmark-formal-state-smoke.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "benchmarks/formal_state.py"
+      - "benchmarks/regimes/formal-state-v1.json"
+      - "tests/test_formal_state_benchmarks.py"
+      - ".github/workflows/benchmark-formal-state-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  oracle-smoke:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest tests/test_formal_state_benchmarks.py -v
+      - name: Generate public mechanics fixtures
+        run: |
+          python -m benchmarks.formal_state \
+            --family parity \
+            --seed-start 100 \
+            --count 8 \
+            --difficulty 8 \
+            --output /tmp/parity.jsonl
+          python -m benchmarks.formal_state \
+            --family register-state \
+            --seed-start 200 \
+            --count 8 \
+            --difficulty 6 \
+            --output /tmp/register.jsonl
+          test "$(wc -l < /tmp/parity.jsonl)" -eq 8
+          test "$(wc -l < /tmp/register.jsonl)" -eq 8
+      - name: Validate instance identity
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          for path in ("/tmp/parity.jsonl", "/tmp/register.jsonl"):
+              for line in open(path):
+                  doc=json.loads(line)
+                  digest=doc.pop("instance_digest")
+                  payload=json.dumps(doc, sort_keys=True, separators=(",", ":")).encode()
+                  assert hashlib.sha256(payload).hexdigest() == digest
+          print("formal-state fixture digests verified")
+          PY
