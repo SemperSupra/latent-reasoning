@@ -2,9 +2,23 @@ name: cpu-mechanism-smoke
 
 on:
   pull_request:
+    paths:
+      - "requirements-cpu-smoke.txt"
+      - "tests/test_latent_mechanics.py"
+      - "tests/test_procedural_fsm.py"
+      - "tools/generate_fsm_tasks.py"
+      - "tools/tiny_mechanic_probe.py"
+      - ".github/workflows/cpu-mechanism-smoke.yml"
   push:
     branches:
       - main
+    paths:
+      - "requirements-cpu-smoke.txt"
+      - "tests/test_latent_mechanics.py"
+      - "tests/test_procedural_fsm.py"
+      - "tools/generate_fsm_tasks.py"
+      - "tools/tiny_mechanic_probe.py"
+      - ".github/workflows/cpu-mechanism-smoke.yml"
 
 permissions:
   contents: read
