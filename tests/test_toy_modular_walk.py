@@ -45,6 +45,37 @@ class ToyModularWalkTests(unittest.TestCase):
 
         self.assertFalse(torch.equal(before, model.classifier.weight.detach()))
 
+    def test_paired_analysis_preserves_seed_pairing(self):
+        rows = []
+        for seed, direct, serial, latent in [
+            (0, 0.20, 0.10, 0.25),
+            (1, 0.22, 0.12, 0.24),
+        ]:
+            for treatment, ood in [
+                ("direct", direct),
+                ("serial-control", serial),
+                ("latent", latent),
+            ]:
+                rows.append(
+                    toy.TreatmentResult(
+                        treatment=treatment,
+                        seed=seed,
+                        latent_steps=2,
+                        forward_calls=1 if treatment == "direct" else 3,
+                        train_accuracy=0.5,
+                        validation_accuracy=ood,
+                        ood_accuracy=ood,
+                        wall_seconds=0.1,
+                        parameter_count=100,
+                        learning_curve=[],
+                    )
+                )
+
+        paired = toy.paired_analysis(rows)
+        ood = paired["comparisons"]["latent_minus_direct_ood_accuracy"]
+        self.assertTrue(ood["all_positive"])
+        self.assertAlmostEqual(ood["mean"], 0.035)
+
 
 if __name__ == "__main__":
     unittest.main()
