@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "run_id": "campaign-0001/textual-cot/qwen3-1.7b/seed-0",
+  "operation": "evaluate",
+  "comparison_group": "campaign-0001-qwen3-1.7b-controls",
+  "backbone": {
+    "provider": "huggingface",
+    "id": "Qwen/Qwen3-1.7B-Base",
+    "exact_revision": null,
+    "foundry_ref": null
+  },
+  "reasoning_substrate": {
+    "schema_version": 1,
+    "id": "textual-cot/prompted-v0",
+    "class": "textual-cot",
+    "implementation": {
+      "family": "prompted-text-cot",
+      "revision": "v0",
+      "source_ref": null
+    },
+    "compute_policy": {
+      "kind": "none",
+      "steps": 0,
+      "min_steps": null,
+      "max_steps": null,
+      "budget_basis": null
+    },
+    "components": [],
+    "configuration": {}
+  },
+  "workload": {
+    "suite": "campaign-0001-smoke",
+    "task": "deterministic-reasoning-smoke",
+    "split": "validation",
+    "instance_manifest_ref": null
+  },
+  "execution": {
+    "seed": 0,
+    "actor_profile_ref": null,
+    "environment_ref": null,
+    "harness_ref": null
+  },
+  "compute_match": null,
+  "provenance": {
+    "repository": "SemperSupra/latent-reasoning",
+    "exact_revision": "UNPINNED"
+  }
+}
