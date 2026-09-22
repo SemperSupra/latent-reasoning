@@ -1,0 +1,71 @@
+name: cpu-toy-capacity-sweep
+
+on:
+  pull_request:
+    paths:
+      - "experiments/toy_capacity_sweep.py"
+      - "tests/test_toy_capacity_sweep.py"
+      - ".github/workflows/cpu-toy-capacity-sweep.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "experiments/toy_capacity_sweep.py"
+      - "tests/test_toy_capacity_sweep.py"
+      - ".github/workflows/cpu-toy-capacity-sweep.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU PyTorch
+        run: python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m unittest tests/test_toy_capacity_sweep.py -v
+      - name: Run controlled width sweep
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            WIDTHS="32,64,128"
+            SEEDS="0,1,2,3,4"
+            EPOCHS="40"
+          else
+            WIDTHS="32,64"
+            SEEDS="0,1"
+            EPOCHS="12"
+          fi
+          python -m experiments.toy_capacity_sweep \
+            --widths "$WIDTHS" \
+            --seeds "$SEEDS" \
+            --epochs "$EPOCHS" \
+            --train-count 768 \
+            --eval-count 192 \
+            > /tmp/capacity-sweep.json
+      - name: Validate receipt
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/capacity-sweep.json"))
+          assert p["evidence_class"] == "toy-baseline-learnability"
+          assert p["controlled_variable"] == "transformer_width"
+          assert p["decision"] in {
+              "freeze-smallest-qualified-width",
+              "width-alone-did-not-establish-learnability",
+          }
+          print(json.dumps({
+              "aggregate": p["aggregate"],
+              "qualified_widths": p["qualified_widths"],
+              "decision": p["decision"],
+          }, indent=2, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: toy-capacity-sweep-receipt
+          path: /tmp/capacity-sweep.json
+          retention-days: 14
