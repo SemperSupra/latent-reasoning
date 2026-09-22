@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "clrs",
+      "repository": "google-deepmind/clrs",
+      "exact_revision": "f8f25086f33e0b4c128583167151fc53b293c5f5",
+      "license": {
+        "class": "A",
+        "status": "permissive",
+        "identifiers": ["Apache-2.0"],
+        "mixed_license": false,
+        "notes": "Official repository license is Apache-2.0."
+      },
+      "lineage": {
+        "maintainer_class": "official-research-org",
+        "methodology_role": "classical algorithm execution with exact intermediate hints and size extrapolation",
+        "venue_or_status": "ICML 2022 benchmark lineage"
+      },
+      "integration": {
+        "posture": "direct-dependency",
+        "vendoring_allowed": true,
+        "module_audit_required": false,
+        "retain_upstream_notices": true,
+        "notes": "Prefer pinned dependency/adapters over copying unless a small stable component earns vendoring."
+      },
+      "holdout_policy": "upstream-splits-plus-private-extensions"
+    },
+    {
+      "id": "flare",
+      "repository": "rycolab/flare",
+      "exact_revision": "a671eb9932620cc888757612f30845efe3304831",
+      "license": {
+        "class": "A",
+        "status": "permissive",
+        "identifiers": ["MIT"],
+        "mixed_license": false,
+        "notes": "Official repository license is MIT."
+      },
+      "lineage": {
+        "maintainer_class": "academic-authors",
+        "methodology_role": "formal-language and automata reasoning with controlled generalization",
+        "venue_or_status": "ICLR 2025"
+      },
+      "integration": {
+        "posture": "direct-dependency",
+        "vendoring_allowed": true,
+        "module_audit_required": false,
+        "retain_upstream_notices": true,
+        "notes": "Clean first formal-language benchmark candidate."
+      },
+      "holdout_policy": "private-seeds-and-instances"
+    },
+    {
+      "id": "prontoqa",
+      "repository": "asaparov/prontoqa",
+      "exact_revision": "0a6412b6fddf46324a1cb96e066dd7b3d89b87d6",
+      "license": {
+        "class": "A",
+        "status": "permissive",
+        "identifiers": ["Apache-2.0"],
+        "mixed_license": false,
+        "notes": "Official repository license is Apache-2.0."
+      },
+      "lineage": {
+        "maintainer_class": "academic-authors",
+        "methodology_role": "synthetic formal reasoning and proof-chain evaluation",
+        "venue_or_status": "ICLR 2023"
+      },
+      "integration": {
+        "posture": "direct-dependency",
+        "vendoring_allowed": true,
+        "module_audit_required": false,
+        "retain_upstream_notices": true,
+        "notes": "Suitable for graph/proof-chain and OOD reasoning lanes."
+      },
+      "holdout_policy": "private-seeds-and-instances"
+    },
+    {
+      "id": "cot2",
+      "repository": "alperengozeten/CoT2",
+      "exact_revision": "11932cbb3bd8592e17772f9193cf8ed163218f68",
+      "license": {
+        "class": "C",
+        "status": "mixed",
+        "identifiers": ["MIT", "Apache-2.0"],
+        "mixed_license": true,
+        "notes": "Top-level MIT; modified ProntoQA/ProSQA-derived subtree retains Apache-2.0 lineage."
+      },
+      "lineage": {
+        "maintainer_class": "academic-authors",
+        "methodology_role": "continuous chain-of-thought with multi-path partial-state supervision",
+        "venue_or_status": "ICLR 2026"
+      },
+      "integration": {
+        "posture": "selective-module",
+        "vendoring_allowed": false,
+        "module_audit_required": true,
+        "retain_upstream_notices": true,
+        "notes": "Use only audited task/generator components with subtree provenance preserved."
+      },
+      "holdout_policy": "private-seeds-and-instances"
+    },
+    {
+      "id": "arc-gen",
+      "repository": "google/ARC-GEN",
+      "exact_revision": "a15cbdb44c776610aeeb9f487a06af875d3d0878",
+      "license": {
+        "class": "A",
+        "status": "permissive",
+        "identifiers": ["Apache-2.0"],
+        "mixed_license": false,
+        "notes": "ARC-GEN is Apache-2.0; its ARC-AGI submodule is also Apache-2.0."
+      },
+      "lineage": {
+        "maintainer_class": "official-research-org",
+        "methodology_role": "fresh procedural ARC-style abstraction generation",
+        "venue_or_status": "Google research generator; operational competition use"
+      },
+      "integration": {
+        "posture": "pinned-external",
+        "vendoring_allowed": true,
+        "module_audit_required": false,
+        "retain_upstream_notices": true,
+        "notes": "Prefer external pinned generator so fresh task production remains clearly attributable."
+      },
+      "holdout_policy": "private-seeds-and-instances"
+    },
+    {
+      "id": "reasoning-gym",
+      "repository": "open-thought/reasoning-gym",
+      "exact_revision": "49b07130b3fcd12f2d064bba7c43869543a0e7e7",
+      "license": {
+        "class": "C",
+        "status": "mixed",
+        "identifiers": ["Apache-2.0", "MIT", "GPL-3.0"],
+        "mixed_license": true,
+        "notes": "Top-level Apache-2.0, but NOTICE documents reused task code under several licenses including GPL-3.0 ACRE."
+      },
+      "lineage": {
+        "maintainer_class": "community",
+        "methodology_role": "broad procedural reasoning environments with verifiable rewards",
+        "venue_or_status": "NeurIPS 2025 Spotlight"
+      },
+      "integration": {
+        "posture": "selective-module",
+        "vendoring_allowed": false,
+        "module_audit_required": true,
+        "retain_upstream_notices": true,
+        "notes": "Never import wholesale. Audit each selected task and its direct lineage before use."
+      },
+      "holdout_policy": "private-seeds-and-instances"
+    },
+    {
+      "id": "multilingual-reasoning-gym",
+      "repository": "apple-aiml-research/ml-multilingual-reasoning-gym",
+      "exact_revision": "260d3e6a883bcc5be24cbd1c1d7e9dfcf1efeae4",
+      "license": {
+        "class": "B",
+        "status": "custom-permissive",
+        "identifiers": ["Apple custom source license"],
+        "mixed_license": false,
+        "notes": "Use/modify/redistribute permissions are explicit, but this is not a standard OSI permissive license and does not carry Apache-2.0's explicit patent grant."
+      },
+      "lineage": {
+        "maintainer_class": "official-research-org",
+        "methodology_role": "parallel multilingual rendering of procedural reasoning tasks",
+        "venue_or_status": "Apple ML Research 2026"
+      },
+      "integration": {
+        "posture": "pinned-external",
+        "vendoring_allowed": false,
+        "module_audit_required": true,
+        "retain_upstream_notices": true,
+        "notes": "Use as oracle/comparison source first; prefer our own multilingual renderer over clean primitives."
+      },
+      "holdout_policy": "private-seeds-and-instances"
+    }
+  ]
+}
