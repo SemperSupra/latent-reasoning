@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "formal-state-v1",
+  "implementation": {
+    "repository": "SemperSupra/latent-reasoning",
+    "origin": "independent-mathematical-implementation",
+    "third_party_code_copied": false
+  },
+  "methodology_lineage": [
+    {
+      "source_id": "flare",
+      "role": "formal-language/generalization precedent"
+    }
+  ],
+  "families": {
+    "parity": {
+      "state": "running XOR bit",
+      "id_difficulty": {"length_min": 1, "length_max": 8},
+      "ood_difficulty": {"length_min": 9, "length_max": 32},
+      "intermediate_truth": "exact prefix parity"
+    },
+    "register-state": {
+      "state": "full register vector modulo M",
+      "id_difficulty": {"steps_min": 1, "steps_max": 6},
+      "ood_difficulty": {"steps_min": 7, "steps_max": 24},
+      "intermediate_truth": "exact register vector after every operation"
+    }
+  },
+  "admission_gate": {
+    "id_accuracy_required": 1.0,
+    "interpret_ood_before_gate": false,
+    "reason": "Do not interpret representation or extrapolation effects until the task is demonstrably learned in-distribution."
+  },
+  "holdouts": {
+    "public": "mechanics-only fixtures and seeds",
+    "qualification": "private seeds and materialized instances"
+  }
+}
