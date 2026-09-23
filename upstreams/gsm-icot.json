@@ -18,7 +18,12 @@
   "files": {
     "train": "data/gsm8k/train.txt",
     "valid": "data/gsm8k/valid.txt",
-    "test": "data/gsm8k/test.txt"
+    "test": "data/gsm8k/test.txt",
+    "train_lfs": {
+      "oid_sha256": "0a3909a9e7d8d2f7ad6b8c7b5608aa744988d835f9bf874d4cf06ca77df6bf8c",
+      "size_bytes": 87805358,
+      "pointer_blob_sha": "853a81e17863e3e42b90a856a0a1535294f8cc7e"
+    }
   },
   "handling": "pinned-external-source-no-corpus-vendoring"
 }
