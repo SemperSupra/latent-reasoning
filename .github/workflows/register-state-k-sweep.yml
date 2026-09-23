@@ -1,0 +1,80 @@
+name: register-state-k-sweep
+
+on:
+  pull_request:
+    paths:
+      - "experiments/register_state_k_sweep.py"
+      - "tests/test_register_state_k_sweep.py"
+      - ".github/workflows/register-state-k-sweep.yml"
+      - "docs/register-state-k-sweep.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "experiments/register_state_k_sweep.py"
+      - "tests/test_register_state_k_sweep.py"
+      - ".github/workflows/register-state-k-sweep.yml"
+      - "docs/register-state-k-sweep.md"
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU PyTorch
+        run: python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m unittest tests/test_register_state_representation_comparison.py tests/test_register_state_k_sweep.py -v
+      - name: Run recurrent-depth sweep
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            KS="1,2,4,8"
+            SEEDS="0,1,2"
+            STAGES="1,2,3"
+            MAX_EPOCHS="500"
+            OOD_MIN="4"
+            OOD_MAX="6"
+            OOD_PER="512"
+          else
+            KS="1,2"
+            SEEDS="0"
+            STAGES="1,2"
+            MAX_EPOCHS="150"
+            OOD_MIN="3"
+            OOD_MAX="4"
+            OOD_PER="128"
+          fi
+
+          python -m experiments.register_state_k_sweep             --ks "$KS"             --seeds "$SEEDS"             --stages "$STAGES"             --max-epochs-per-stage "$MAX_EPOCHS"             --learning-rate 0.001             --ood-min-steps "$OOD_MIN"             --ood-max-steps "$OOD_MAX"             --ood-per-steps "$OOD_PER"             > /tmp/register-k-sweep.json
+      - name: Validate sweep receipt
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/register-k-sweep.json"))
+          assert p["evidence_class"] == "recurrent-depth-sweep"
+          assert p["family"] == "register-state-mini-v1"
+          for row in p["sweep"]:
+              k=row["k"]
+              assert row["aggregate"]["serial-control"]["forward_calls_per_batch"] == k+1
+              assert row["aggregate"]["latent"]["forward_calls_per_batch"] == k+1
+          print(json.dumps({
+              "valid_ks":p["valid_ks"],
+              "sweep":[{
+                  "k":r["k"],
+                  "comparison_valid":r["comparison_valid"],
+                  "aggregate":r["aggregate"],
+                  "paired":r["paired_latent_minus_serial"],
+              } for r in p["sweep"]],
+          },indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: register-state-k-sweep
+          path: /tmp/register-k-sweep.json
+          retention-days: 14
