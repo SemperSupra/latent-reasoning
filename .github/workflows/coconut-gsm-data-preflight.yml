@@ -37,11 +37,21 @@ jobs:
           grep -q "MIT License" /tmp/icot/LICENSE
       - name: Hydrate exact augmented GSM text files
         run: |
+          # The pinned train file is a Git-LFS object (~88 MiB); valid/test are
+          # ordinary Git blobs. Hydrate from the already-pinned source checkout
+          # instead of depending on GitHub's media URL behavior.
+          git -C /tmp/icot lfs install --local
+          git -C /tmp/icot lfs pull --include="data/gsm8k/train.txt" --exclude=""
+
           mkdir -p /tmp/coconut/data
-          for split in train valid test; do
-            curl --fail --location --retry 3               "https://media.githubusercontent.com/media/da03/Internalize_CoT_Step_by_Step/e06a32ee5e4cd117171daeb4755d2a97ece62761/data/gsm8k/${split}.txt"               -o "/tmp/coconut/data/gsm_${split}.txt"
-            test -s "/tmp/coconut/data/gsm_${split}.txt"
-          done
+          cp /tmp/icot/data/gsm8k/train.txt /tmp/coconut/data/gsm_train.txt
+          cp /tmp/icot/data/gsm8k/valid.txt /tmp/coconut/data/gsm_valid.txt
+          cp /tmp/icot/data/gsm8k/test.txt /tmp/coconut/data/gsm_test.txt
+
+          test "$(wc -c < /tmp/coconut/data/gsm_train.txt)" -gt 1000000
+          test -s /tmp/coconut/data/gsm_valid.txt
+          test -s /tmp/coconut/data/gsm_test.txt
+          ! grep -q "^version https://git-lfs.github.com/spec/v1$" /tmp/coconut/data/gsm_train.txt
       - name: Execute exact Coconut preprocessing
         working-directory: /tmp/coconut
         run: |
