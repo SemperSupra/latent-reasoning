@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "id": "python312-torch251-cpu",
+  "python": "3.12",
+  "requirements_file": "requirements-experiment-cpu.txt",
+  "notes": "Portable CPU experiment environment used by GHA method-development and later local replay."
+}

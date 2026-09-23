@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "campaign-0001/parity-k2-repaired-main",
+  "resource_class": "cpu",
+  "environment_ref": "environments/python312-torch251-cpu.json",
+  "module": "experiments.parity_k2_repaired_control",
+  "arguments": {
+    "seeds": "0,1,2",
+    "stages": "2,4,8",
+    "recurrent_steps": 2,
+    "max_epochs_per_stage": 1000,
+    "ood_min_length": 9,
+    "ood_max_length": 16,
+    "ood_per_length": 256
+  },
+  "timeout_seconds": 3600
+}
