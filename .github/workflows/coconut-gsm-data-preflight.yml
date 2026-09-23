@@ -1,0 +1,77 @@
+name: coconut-gsm-data-preflight
+
+on:
+  pull_request:
+    paths:
+      - "upstreams/gsm-icot.json"
+      - "requirements-coconut-data-preflight.txt"
+      - "tools/coconut_data_pipeline_preflight.py"
+      - ".github/workflows/coconut-gsm-data-preflight.yml"
+      - "docs/coconut-gsm-data-preflight.md"
+
+permissions:
+  contents: read
+
+jobs:
+  exact-upstream-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r requirements-coconut-data-preflight.txt
+      - name: Clone exact Coconut and data-source revisions
+        run: |
+          git clone --filter=blob:none https://github.com/facebookresearch/coconut.git /tmp/coconut
+          git -C /tmp/coconut checkout 27273cb8cca4bb763c041a63b036d0c3b7cbbb48
+          test "$(git -C /tmp/coconut rev-parse HEAD)" = "27273cb8cca4bb763c041a63b036d0c3b7cbbb48"
+
+          git clone --filter=blob:none https://github.com/da03/Internalize_CoT_Step_by_Step.git /tmp/icot
+          git -C /tmp/icot checkout e06a32ee5e4cd117171daeb4755d2a97ece62761
+          test "$(git -C /tmp/icot rev-parse HEAD)" = "e06a32ee5e4cd117171daeb4755d2a97ece62761"
+          grep -q "MIT License" /tmp/icot/LICENSE
+      - name: Hydrate exact augmented GSM text files
+        run: |
+          mkdir -p /tmp/coconut/data
+          for split in train valid test; do
+            curl --fail --location --retry 3               "https://media.githubusercontent.com/media/da03/Internalize_CoT_Step_by_Step/e06a32ee5e4cd117171daeb4755d2a97ece62761/data/gsm8k/${split}.txt"               -o "/tmp/coconut/data/gsm_${split}.txt"
+            test -s "/tmp/coconut/data/gsm_${split}.txt"
+          done
+      - name: Execute exact Coconut preprocessing
+        working-directory: /tmp/coconut
+        run: |
+          for split in train valid test; do
+            python preprocessing/gsm_icot.py "$split"
+            test -s "data/gsm_${split}.json"
+          done
+      - name: Validate dataset and collator path
+        env:
+          COCONUT_UPSTREAM: /tmp/coconut
+          COCONUT_DATA: /tmp/coconut/data
+        run: |
+          python tools/coconut_data_pipeline_preflight.py > /tmp/coconut-data-preflight.json
+      - name: Validate receipt boundary
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/coconut-data-preflight.json"))
+          assert p["evidence_class"]=="pinned-upstream-data-pipeline-preflight"
+          assert p["data_source"]["license"]=="MIT"
+          assert p["data_source"]["underlying_dataset_license"]=="MIT"
+          assert p["bounded_dataset"]["latent_tokens_per_training_example"]==2
+          assert p["collator"]["has_position_ids"] is True
+          assert p["source_files"]["train"]["records"] > 0
+          assert p["source_files"]["valid"]["records"] > 0
+          assert p["source_files"]["test"]["records"] > 0
+          print(json.dumps(p,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coconut-gsm-data-preflight
+          path: /tmp/coconut-data-preflight.json
+          retention-days: 14
