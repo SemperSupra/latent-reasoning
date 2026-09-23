@@ -1,0 +1,42 @@
+name: sovereign-stage0-apply-fail-closed
+
+on:
+  pull_request:
+    paths:
+      - "tools/apply_coconut_stage0.py"
+      - "tests/test_coconut_stage0_apply.py"
+      - "profiles/coconut-gsm-cot-stage0-2gpu.json"
+      - "containers/coconut-stage0.Dockerfile"
+      - ".github/workflows/sovereign-stage0-apply-fail-closed.yml"
+      - "docs/sovereign-coconut-stage0-apply.md"
+
+permissions:
+  contents: read
+
+jobs:
+  refuse-ineligible-gha:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest tests/test_coconut_stage0_apply.py -v
+      - name: Prove one-command stage0 apply refuses CPU GHA before build
+        run: |
+          set +e
+          python tools/apply_coconut_stage0.py             --output-dir /tmp/stage0-apply             > /tmp/stage0-apply-result.json
+          status=$?
+          set -e
+          test "$status" -eq 3
+          test ! -e /tmp/stage0-apply/stage0-execution.json
+          test ! -e /tmp/stage0-apply/verified.json
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/stage0-apply-result.json"))
+          assert p["status"]=="blocked"
+          assert p["decision"]=="do-not-apply"
+          assert "gpu_count_below_minimum" in p["blocking_reasons"]
+          print(json.dumps(p,indent=2,sort_keys=True))
+          PY
