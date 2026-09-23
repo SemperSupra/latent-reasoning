@@ -1,0 +1,71 @@
+name: parity-recurrent-lr-id-only
+
+on:
+  pull_request:
+    paths:
+      - "experiments/parity_representation_comparison.py"
+      - "experiments/parity_recurrent_lr_sweep.py"
+      - "tests/test_parity_recurrent_lr_sweep.py"
+      - ".github/workflows/parity-recurrent-lr-id-only.yml"
+      - "docs/parity-recurrent-lr-selection.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "experiments/parity_recurrent_lr_sweep.py"
+      - ".github/workflows/parity-recurrent-lr-id-only.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  id-only-selection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU PyTorch
+        run: python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m unittest tests/test_parity_representation_comparison.py tests/test_parity_recurrent_lr_sweep.py -v
+      - name: Run ID-only common recurrent LR sweep
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            RATES="0.0005,0.001,0.002,0.003,0.005"
+            SEEDS="0,1,2"
+            STAGES="2,4,8"
+            MAX_EPOCHS="1000"
+          else
+            RATES="0.001,0.002"
+            SEEDS="0"
+            STAGES="2,4"
+            MAX_EPOCHS="250"
+          fi
+
+          python -m experiments.parity_recurrent_lr_sweep             --learning-rates "$RATES"             --seeds "$SEEDS"             --stages "$STAGES"             --recurrent-steps 2             --max-epochs-per-stage "$MAX_EPOCHS"             > /tmp/parity-recurrent-lr.json
+      - name: Enforce no-OOD selection boundary
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/parity-recurrent-lr.json"))
+          assert p["evidence_class"] == "id-only-recurrent-treatment-hyperparameter-selection"
+          assert p["controlled_variable"] == "common_recurrent_learning_rate"
+          assert p["recurrent_steps"] == 2
+          assert p["ood_accessed"] is False
+          for candidate in p["candidates"]:
+              for treatment in candidate["treatments"].values():
+                  for seed in treatment["seeds"]:
+                      assert seed["ood_emitted"] is False
+          print(json.dumps({
+              "candidates": p["candidates"],
+              "selected_learning_rate": p["selected_learning_rate"],
+              "decision": p["decision"],
+          }, indent=2, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parity-recurrent-lr-id-only
+          path: /tmp/parity-recurrent-lr.json
+          retention-days: 14
