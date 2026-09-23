@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "pytorch251-cuda124-cudnn9-gpu",
+  "python": "3.11",
+  "requirements_file": "requirements-coconut-gpu-smoke.txt",
+  "container_file": "containers/coconut-gpu-smoke.Dockerfile",
+  "base_image": "pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime",
+  "base_image_digest": "sha256:c8268a92a69bd500f8be0e665b2630ee006dadaf7bfbc24249141b15ff622755",
+  "resource_class": "gpu",
+  "notes": "Bounded Coconut reference-backbone GPU smoke environment. Exact source/model revisions are embedded during image build."
+}
