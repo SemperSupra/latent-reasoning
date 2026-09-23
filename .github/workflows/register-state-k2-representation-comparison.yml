@@ -1,0 +1,73 @@
+name: register-state-k2-representation-comparison
+
+on:
+  pull_request:
+    paths:
+      - "experiments/register_state_representation_comparison.py"
+      - "tests/test_register_state_representation_comparison.py"
+      - ".github/workflows/register-state-k2-representation-comparison.yml"
+      - "docs/register-state-k2-representation-comparison.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "experiments/register_state_representation_comparison.py"
+      - "tests/test_register_state_representation_comparison.py"
+      - ".github/workflows/register-state-k2-representation-comparison.yml"
+      - "docs/register-state-k2-representation-comparison.md"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU PyTorch
+        run: python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m unittest tests/test_register_state_representation_comparison.py -v
+      - name: Run fixed-K comparison
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            SEEDS="0,1,2"
+            STAGES="1,2,3"
+            MAX_EPOCHS="500"
+            OOD_MIN="4"
+            OOD_MAX="6"
+            OOD_PER="512"
+            K="2"
+          else
+            SEEDS="0"
+            STAGES="1,2"
+            MAX_EPOCHS="150"
+            OOD_MIN="3"
+            OOD_MAX="4"
+            OOD_PER="128"
+            K="1"
+          fi
+
+          python -m experiments.register_state_representation_comparison             --seeds "$SEEDS"             --stages "$STAGES"             --recurrent-steps "$K"             --max-epochs-per-stage "$MAX_EPOCHS"             --learning-rate 0.001             --ood-min-steps "$OOD_MIN"             --ood-max-steps "$OOD_MAX"             --ood-per-steps "$OOD_PER"             > /tmp/register-state-comparison.json
+      - name: Validate comparison receipt
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/register-state-comparison.json"))
+          assert p["evidence_class"] == "fixed-k-reasoning-representation-comparison"
+          assert p["family"] == "register-state-mini-v1"
+          assert p["aggregate"]["serial-control"]["forward_calls_per_batch"] == p["aggregate"]["latent"]["forward_calls_per_batch"]
+          print(json.dumps({
+              "aggregate": p["aggregate"],
+              "paired_analysis": p["paired_analysis"],
+              "comparison_valid": p["comparison_valid"],
+          }, indent=2, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: register-state-k2-comparison
+          path: /tmp/register-state-comparison.json
+          retention-days: 14
