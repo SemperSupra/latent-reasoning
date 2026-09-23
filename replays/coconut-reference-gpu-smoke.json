@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "campaign-0001/coconut-reference-gpu-smoke",
+  "resource_class": "gpu",
+  "environment_ref": "environments/pytorch251-cuda124-cudnn9-gpu.json",
+  "module": "experiments.coconut_gpu_smoke",
+  "arguments": {
+    "device_index": 0,
+    "latent_slots": 2,
+    "learning_rate": 0.000001
+  },
+  "timeout_seconds": 1800
+}
