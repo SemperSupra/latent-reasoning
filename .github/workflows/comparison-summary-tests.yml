@@ -1,0 +1,22 @@
+name: comparison-summary-tests
+
+on:
+  pull_request:
+    paths:
+      - "tools/summarize_representation_comparison.py"
+      - "tests/test_comparison_summary.py"
+      - ".github/workflows/comparison-summary-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest tests/test_comparison_summary.py -v
