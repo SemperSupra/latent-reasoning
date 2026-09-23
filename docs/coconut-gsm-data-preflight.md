@@ -22,7 +22,11 @@ upstream repository's `.gitattributes` rule for this path. The object is
 already an LFS pointer, but a checkout of that exact commit does not by itself
 know to smudge it.
 
-The qualified method therefore:
+The qualified method is now implemented by the runner-neutral
+`tools/hydrate_pinned_lfs.py`, and the Coconut GHA workflow calls that same
+tool rather than duplicating the Git/LFS procedure in YAML.
+
+The hydrator:
 
 1. clones without an initial checkout;
 2. installs Git LFS locally;
@@ -35,7 +39,8 @@ The qualified method therefore:
 6. verifies the hydrated train file's exact byte size and SHA-256.
 
 This local attribute changes no upstream content and does not rely on a later
-upstream branch merely to activate LFS transport.
+upstream branch merely to activate LFS transport. The same command is therefore
+usable from GHA, a local shell, a container, or a sovereign worker.
 
 ## What GHA validates
 
