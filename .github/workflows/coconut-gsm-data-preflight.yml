@@ -33,9 +33,15 @@ jobs:
 
           GIT_LFS_SKIP_SMUDGE=1 git clone --filter=blob:none --no-checkout https://github.com/da03/Internalize_CoT_Step_by_Step.git /tmp/icot
           git -C /tmp/icot lfs install --local
+          # The pinned historical commit predates upstream .gitattributes even
+          # though train.txt is already an LFS pointer. Install only the required
+          # historical path rule locally so checkout can smudge that exact object.
+          printf '%s\n' \
+            'data/gsm8k/train.txt filter=lfs diff=lfs merge=lfs -text' \
+            > /tmp/icot/.git/info/attributes
+
           git -C /tmp/icot sparse-checkout init --no-cone
           printf '%s\n' \
-            '/.gitattributes' \
             '/LICENSE' \
             '/data/gsm8k/train.txt' \
             '/data/gsm8k/valid.txt' \
