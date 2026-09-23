@@ -2,7 +2,7 @@
 
 Public GitHub-hosted CPU runners are used primarily as a bounded **method-development and execution-learning environment**. They let the project learn how to package, orchestrate, control, validate, and reproduce experiments before moving them onto sovereign/local resources.
 
-They are not the target deployment or final efficacy substrate.
+They are not the target deployment substrate, and proving efficacy is not their primary purpose. Scientifically valid results produced on GHA are nevertheless retained and interpreted normally according to the strength and limits of their experimental design.
 
 ## Evidence classes
 
@@ -24,9 +24,11 @@ CPU CI may build and validate public generators with exact intermediate state, i
 
 ### Capability evidence
 
-Not accepted as final authority from the GHA CPU lane. GHA may produce preliminary descriptive performance evidence when a benchmark, control, and model are sufficiently representative, but the program should not spend GHA complexity or minutes merely to prove efficacy.
+GHA may produce scientifically valid capability or generalization evidence when the benchmark, controls, model, sample size, and analysis support that conclusion. Such findings are not discarded or automatically downgraded because they came from GHA.
 
-Stronger capability/generalization claims require replay on the intended sovereign/local execution substrate with hardware/software substrate identity preserved in the run record.
+The program should still avoid spending GHA complexity or minutes merely to maximize efficacy evidence, because method-development and execution learning are the primary goals of this substrate.
+
+Later sovereign/local replay answers additional questions—portability, substrate sensitivity, scale behavior, and whether findings generalize to the intended execution environment. Replay strengthens or qualifies the evidence base; it is not a prerequisite that retroactively makes a valid GHA result scientific.
 
 ## Current public GHA mapping
 
