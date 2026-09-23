@@ -1,0 +1,51 @@
+name: sovereign-apply-fail-closed
+
+on:
+  pull_request:
+    paths:
+      - "tools/apply_coconut_gpu_smoke.py"
+      - "tests/test_sovereign_apply.py"
+      - ".github/workflows/sovereign-apply-fail-closed.yml"
+      - "docs/sovereign-coconut-apply.md"
+
+permissions:
+  contents: read
+
+jobs:
+  refuse-on-ineligible-host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest tests/test_sovereign_apply.py -v
+      - name: Invoke exact local apply entrypoint on GHA
+        run: |
+          set +e
+          python tools/apply_coconut_gpu_smoke.py \
+            --output-dir "$RUNNER_TEMP/coconut-apply" \
+            --image-tag latent-reasoning-coconut-gpu-smoke:must-not-build
+          status=$?
+          set -e
+          test "$status" -eq 3
+      - name: Verify fail-closed evidence and zero image build
+        run: |
+          python - <<'PY'
+          import json, os
+          root=os.path.join(os.environ["RUNNER_TEMP"],"coconut-apply")
+          observation=json.load(open(os.path.join(root,"substrate.json")))
+          plan=json.load(open(os.path.join(root,"compatibility.json")))
+          assert plan["decision"]=="do-not-apply"
+          assert plan["compatible"] is False
+          assert observation["nvidia"]["nvidia_smi_available"] is False
+          assert not os.path.exists(os.path.join(root,"scientific-receipt.json"))
+          assert not os.path.exists(os.path.join(root,"verified.json"))
+          print(json.dumps({
+              "decision":plan["decision"],
+              "blocking_reasons":plan["blocking_reasons"],
+              "scientific_apply_performed":False,
+          },indent=2,sort_keys=True))
+          PY
+          ! docker image inspect latent-reasoning-coconut-gpu-smoke:must-not-build >/dev/null 2>&1
