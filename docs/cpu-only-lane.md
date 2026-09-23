@@ -1,6 +1,8 @@
 # CPU-only experiment lane
 
-Public GitHub-hosted CPU runners are used for bounded work that does not require accelerator-scale model capability.
+Public GitHub-hosted CPU runners are used primarily as a bounded **method-development and execution-learning environment**. They let the project learn how to package, orchestrate, control, validate, and reproduce experiments before moving them onto sovereign/local resources.
+
+They are not the target deployment substrate, and proving efficacy is not their primary purpose. Scientifically valid results produced on GHA are nevertheless retained and interpreted normally according to the strength and limits of their experimental design.
 
 ## Evidence classes
 
@@ -22,11 +24,17 @@ CPU CI may build and validate public generators with exact intermediate state, i
 
 ### Capability evidence
 
-Not accepted from the tiny CPU smoke lane. Claims about useful reasoning performance require a representative trained backbone and a qualified execution substrate.
+GHA may produce scientifically valid capability or generalization evidence when the benchmark, controls, model, sample size, and analysis support that conclusion. Such findings are not discarded or automatically downgraded because they came from GHA.
+
+The program should still avoid spending GHA complexity or minutes merely to maximize efficacy evidence, because method-development and execution learning are the primary goals of this substrate.
+
+Later sovereign/local replay answers additional questions—portability, substrate sensitivity, scale behavior, and whether findings generalize to the intended execution environment. Replay strengthens or qualifies the evidence base; it is not a prerequisite that retroactively makes a valid GHA result scientific.
 
 ## Current public GHA mapping
 
 - `ubuntu-slim`: lightweight deterministic generators and verifiers.
 - `ubuntu-latest`: tiny PyTorch/Transformers forward/backward mechanism tests.
 
-The CPU lane is intended to fail fast before scarce sovereign GPU time is consumed.
+The CPU lane is intended to fail fast and teach the reusable experiment machinery before sovereign resources are consumed.
+
+A successful GHA experiment should therefore leave behind enough immutable configuration, manifests, receipts, seeds, and control semantics to be replayed locally with minimal translation. Differences between GHA and sovereign/local replay are themselves useful substrate-portability evidence.

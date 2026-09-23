@@ -63,3 +63,4 @@ The manifest is input/provenance configuration. Model Spelunker receipts remain 
 4. A latent result is not promoted without a meaningful serial-compute control where technically possible.
 5. Artifact identity and behavioral qualification remain separate authorities.
 6. Private holdout contents never need to enter the public repository.
+7. GitHub Actions is primarily a method-development and execution-learning substrate for Campaign 0001. This purpose does not reduce the scientific status of results obtained there: findings that satisfy the experiment's validity gates remain evidence with the strength warranted by their design. Sovereign/local replay is used to test portability, substrate sensitivity, scale, and external validity—not to retroactively legitimize otherwise valid GHA findings. Hardware/software substrate remains an explicit qualification variable.
