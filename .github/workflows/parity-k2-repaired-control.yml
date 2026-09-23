@@ -1,0 +1,77 @@
+name: parity-k2-repaired-control
+
+on:
+  pull_request:
+    paths:
+      - "experiments/parity_k2_repaired_control.py"
+      - "tests/test_parity_k2_repaired_control.py"
+      - ".github/workflows/parity-k2-repaired-control.yml"
+      - "docs/parity-k2-repaired-control.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "experiments/parity_k2_repaired_control.py"
+      - "tests/test_parity_k2_repaired_control.py"
+      - ".github/workflows/parity-k2-repaired-control.yml"
+      - "docs/parity-k2-repaired-control.md"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU PyTorch
+        run: python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m unittest tests/test_parity_representation_comparison.py tests/test_parity_k2_repaired_control.py -v
+      - name: Run repaired K2 comparison
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            SEEDS="0,1,2"
+            STAGES="2,4,8"
+            MAX_EPOCHS="1000"
+            OOD_MIN="9"
+            OOD_MAX="16"
+            OOD_PER="256"
+          else
+            SEEDS="0"
+            STAGES="2,4"
+            MAX_EPOCHS="300"
+            OOD_MIN="5"
+            OOD_MAX="6"
+            OOD_PER="64"
+          fi
+
+          python -m experiments.parity_k2_repaired_control             --seeds "$SEEDS"             --stages "$STAGES"             --recurrent-steps 2             --max-epochs-per-stage "$MAX_EPOCHS"             --ood-min-length "$OOD_MIN"             --ood-max-length "$OOD_MAX"             --ood-per-length "$OOD_PER"             > /tmp/parity-k2-repaired.json
+      - name: Validate repaired-control receipt
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/parity-k2-repaired.json"))
+          assert p["evidence_class"]=="fixed-k-reasoning-representation-comparison"
+          assert p["comparison_revision"]=="repaired-common-recurrent-lr-v1"
+          assert p["settings"]["direct_learning_rate"]==0.001
+          assert p["settings"]["recurrent_learning_rate"]==0.002
+          assert p["settings"]["recurrent_lr_selection"]["ood_accessed"] is False
+          assert p["aggregate"]["serial-control"]["learning_rate"]==0.002
+          assert p["aggregate"]["latent"]["learning_rate"]==0.002
+          assert p["aggregate"]["serial-control"]["forward_calls_per_batch"]==3
+          assert p["aggregate"]["latent"]["forward_calls_per_batch"]==3
+          print(json.dumps({
+              "comparison_valid":p["comparison_valid"],
+              "aggregate":p["aggregate"],
+              "paired_analysis":p["paired_analysis"],
+          },indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parity-k2-repaired-control
+          path: /tmp/parity-k2-repaired.json
+          retention-days: 14
