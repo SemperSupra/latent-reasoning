@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "campaign-0001/register-state-k-sweep-smoke",
+  "resource_class": "cpu",
+  "environment_ref": "environments/python312-torch251-cpu.json",
+  "module": "experiments.register_state_k_sweep",
+  "arguments": {
+    "ks": "1,2",
+    "seeds": "0",
+    "stages": "1,2",
+    "max_epochs_per_stage": 150,
+    "learning_rate": 0.001,
+    "ood_min_steps": 3,
+    "ood_max_steps": 4,
+    "ood_per_steps": 128
+  },
+  "timeout_seconds": 1800
+}
