@@ -1,0 +1,85 @@
+name: coconut-stage0-capsule-build
+
+on:
+  pull_request:
+    paths:
+      - "containers/coconut-stage0.Dockerfile"
+      - "requirements-coconut-stage0.txt"
+      - "environments/coconut-stage0-pytorch251-cuda124.json"
+      - "tools/run_coconut_stage0.py"
+      - "tests/test_coconut_stage0_capsule.py"
+      - "configs/coconut-gsm-cot-stage0-2gpu.yaml"
+      - "plans/coconut-gsm-cot-stage0-2gpu.json"
+      - "profiles/coconut-gsm-cot-stage0-2gpu.json"
+      - "tools/hydrate_pinned_lfs.py"
+      - ".github/workflows/coconut-stage0-capsule-build.yml"
+      - "docs/coconut-stage0-capsule.md"
+
+permissions:
+  contents: read
+
+jobs:
+  build-inspect-refuse-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install PyYAML==6.0.3
+      - run: python -m unittest tests/test_coconut_stage0_capsule.py -v
+
+      - name: Prove stage-0 placement is refused before execution
+        run: |
+          python tools/observe_substrate.py > /tmp/substrate.json
+          python tools/check_substrate_compatibility.py \
+            /tmp/substrate.json \
+            profiles/coconut-gsm-cot-stage0-2gpu.json \
+            --output /tmp/compatibility.json
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/compatibility.json"))
+          assert p["compatible"] is False
+          assert p["decision"]=="do-not-apply"
+          assert "gpu_count_below_minimum" in p["blocking_reasons"]
+          print(json.dumps(p,indent=2,sort_keys=True))
+          PY
+
+      - name: Build exact offline stage-0 capsule
+        run: |
+          docker build \
+            --build-arg SOURCE_REVISION="$GITHUB_SHA" \
+            -f containers/coconut-stage0.Dockerfile \
+            -t latent-reasoning-coconut-stage0:ci \
+            .
+
+      - name: Inspect capsule identities without GPU training
+        run: |
+          mkdir -p /tmp/stage0-inspection
+          docker run --rm \
+            -v /tmp/stage0-inspection:/out \
+            latent-reasoning-coconut-stage0:ci \
+            --inspect-only \
+            --receipt /out/inspection.json
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/stage0-inspection/inspection.json"))
+          assert p["evidence_class"]=="coconut-stage0-capsule-inspection"
+          assert p["container_contract"]=="coconut-stage0-v1"
+          assert p["coconut_revision"]=="27273cb8cca4bb763c041a63b036d0c3b7cbbb48"
+          assert p["gpt2_revision"]=="607a30d783dfa663caf39e06633721c8d4cfcd7e"
+          assert p["gsm_train_sha256"]=="0a3909a9e7d8d2f7ad6b8c7b5608aa744988d835f9bf874d4cf06ca77df6bf8c"
+          assert p["effective_global_batch"]==128
+          assert p["world_size"]==2
+          assert p["gradient_accumulation_steps"]==2
+          assert p["num_epochs"]==25
+          assert p["learning_rate"]==0.0001
+          assert p["cuda_visible"] is False
+          assert p["cuda_device_count"]==0
+          print(json.dumps(p,indent=2,sort_keys=True))
+          PY
+
+      - name: Prove training was not applied
+        run: |
+          test ! -e /tmp/stage0-inspection/stage0-execution.json
