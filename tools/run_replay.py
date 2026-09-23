@@ -69,6 +69,10 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def source_revision() -> str | None:
+    return git_head() or os.environ.get("LATENT_REASONING_SOURCE_REVISION")
+
+
 def main() -> None:
     parser=argparse.ArgumentParser()
     parser.add_argument("spec",type=Path)
@@ -116,6 +120,7 @@ def main() -> None:
         "environment_ref":spec["environment_ref"],
         "command_argv":argv[1:],
         "git_head":git_head(),
+        "source_revision":source_revision(),
         "execution":{
             "started_unix":started,
             "elapsed_seconds":elapsed,
@@ -127,6 +132,7 @@ def main() -> None:
             "github_actions":os.environ.get("GITHUB_ACTIONS")=="true",
             "runner_os":os.environ.get("RUNNER_OS"),
             "runner_arch":os.environ.get("RUNNER_ARCH"),
+            "container_contract":os.environ.get("LATENT_REASONING_CONTAINER"),
         },
     }
     args.metadata.write_text(json.dumps(metadata,sort_keys=True)+"\n")
