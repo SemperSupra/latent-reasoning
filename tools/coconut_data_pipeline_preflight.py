@@ -37,7 +37,12 @@ def load_dataset_module(root: Path):
 
 
 def independently_validate_raw(raw_path: Path, processed_path: Path) -> dict:
-    raw_lines=raw_path.read_text(encoding="utf-8").splitlines()
+    # Coconut's pinned preprocessor defines one record per physical text-file
+    # line via file.readlines(). str.splitlines() recognizes additional Unicode
+    # and control-character separators and therefore can invent record
+    # boundaries that the upstream preprocessor never uses.
+    with raw_path.open("r", encoding="utf-8", newline=None) as handle:
+        raw_lines=[line.rstrip("\r\n") for line in handle.readlines()]
     processed=json.loads(processed_path.read_text(encoding="utf-8"))
     if len(raw_lines) != len(processed):
         raise RuntimeError(
@@ -64,8 +69,13 @@ def independently_validate_raw(raw_path: Path, processed_path: Path) -> dict:
     if malformed:
         raise RuntimeError(f"{raw_path.name}: {malformed} malformed raw records")
 
+    broad_splitline_count=len(raw_path.read_text(encoding="utf-8").splitlines())
+
     return {
         "records":len(processed),
+        "physical_line_records":len(raw_lines),
+        "broad_splitline_count":broad_splitline_count,
+        "extra_control_separator_boundaries":broad_splitline_count-len(raw_lines),
         "raw_sha256":sha256(raw_path),
         "processed_sha256":sha256(processed_path),
         "min_steps":min(len(item["steps"]) for item in processed),
