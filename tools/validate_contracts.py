@@ -13,12 +13,16 @@ benchmark_source_schema = json.loads(
     (SCHEMAS / "benchmark-source-registry.schema.json").read_text()
 )
 replay_schema = json.loads((SCHEMAS / "replay-spec.schema.json").read_text())
+substrate_requirements_schema = json.loads(
+    (SCHEMAS / "substrate-requirements.schema.json").read_text()
+)
 
 for schema in (
     reasoning_schema,
     run_schema,
     benchmark_source_schema,
     replay_schema,
+    substrate_requirements_schema,
 ):
     Draft202012Validator.check_schema(schema)
 
@@ -31,6 +35,7 @@ reasoning_validator = Draft202012Validator(reasoning_schema)
 run_validator = Draft202012Validator(run_schema_resolved)
 benchmark_source_validator = Draft202012Validator(benchmark_source_schema)
 replay_validator = Draft202012Validator(replay_schema)
+substrate_requirements_validator = Draft202012Validator(substrate_requirements_schema)
 
 candidates = []
 for base in (ROOT / "examples", ROOT / "campaigns"):
@@ -146,6 +151,36 @@ if replay_dir.exists():
                 failures.append(
                     f"{path.relative_to(ROOT)}: experiment module does not exist: "
                     f"{module}"
+                )
+
+profiles_dir = ROOT / "profiles"
+if profiles_dir.exists():
+    seen_profile_ids = set()
+    for path in sorted(profiles_dir.glob("*.json")):
+        profile = json.loads(path.read_text())
+        errors = sorted(
+            substrate_requirements_validator.iter_errors(profile),
+            key=lambda e: list(e.path),
+        )
+        validated += 1
+        for error in errors:
+            location = ".".join(str(part) for part in error.path) or "<root>"
+            failures.append(f"{path.relative_to(ROOT)}:{location}: {error.message}")
+
+        profile_id = profile.get("id")
+        if profile_id in seen_profile_ids:
+            failures.append(f"{path.relative_to(ROOT)}: duplicate profile id {profile_id}")
+        seen_profile_ids.add(profile_id)
+
+        req = profile.get("requirements", {})
+        if profile.get("resource_class") == "gpu":
+            if not req.get("nvidia_required"):
+                failures.append(
+                    f"{path.relative_to(ROOT)}: GPU profile must require NVIDIA visibility"
+                )
+            if req.get("min_gpu_count", 0) < 1:
+                failures.append(
+                    f"{path.relative_to(ROOT)}: GPU profile must require at least one GPU"
                 )
 
 if failures:
