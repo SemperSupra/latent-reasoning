@@ -38,8 +38,12 @@ jobs:
       - name: Hydrate exact augmented GSM text files
         run: |
           # The pinned train file is a Git-LFS object (~88 MiB); valid/test are
-          # ordinary Git blobs. Hydrate from the already-pinned source checkout
-          # instead of depending on GitHub's media URL behavior.
+          # ordinary Git blobs. Verify the immutable pointer identity first,
+          # then hydrate from the already-pinned source checkout.
+          git -C /tmp/icot show e06a32ee5e4cd117171daeb4755d2a97ece62761:data/gsm8k/train.txt > /tmp/gsm-train.pointer
+          grep -qx "oid sha256:0a3909a9e7d8d2f7ad6b8c7b5608aa744988d835f9bf874d4cf06ca77df6bf8c" /tmp/gsm-train.pointer
+          grep -qx "size 87805358" /tmp/gsm-train.pointer
+
           git -C /tmp/icot lfs install --local
           git -C /tmp/icot lfs pull --include="data/gsm8k/train.txt" --exclude=""
 
@@ -48,7 +52,8 @@ jobs:
           cp /tmp/icot/data/gsm8k/valid.txt /tmp/coconut/data/gsm_valid.txt
           cp /tmp/icot/data/gsm8k/test.txt /tmp/coconut/data/gsm_test.txt
 
-          test "$(wc -c < /tmp/coconut/data/gsm_train.txt)" -gt 1000000
+          test "$(wc -c < /tmp/coconut/data/gsm_train.txt)" -eq 87805358
+          echo "0a3909a9e7d8d2f7ad6b8c7b5608aa744988d835f9bf874d4cf06ca77df6bf8c  /tmp/coconut/data/gsm_train.txt" | sha256sum --check --strict
           test -s /tmp/coconut/data/gsm_valid.txt
           test -s /tmp/coconut/data/gsm_test.txt
           ! grep -q "^version https://git-lfs.github.com/spec/v1$" /tmp/coconut/data/gsm_train.txt
