@@ -1,0 +1,44 @@
+name: substrate-observer-smoke
+
+on:
+  pull_request:
+    paths:
+      - "schemas/substrate-observation.schema.json"
+      - "tools/observe_substrate.py"
+      - "tests/test_substrate_observer.py"
+      - ".github/workflows/substrate-observer-smoke.yml"
+      - "docs/substrate-observer.md"
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest tests/test_substrate_observer.py -v
+      - name: Observe GHA host read-only
+        run: python tools/observe_substrate.py > /tmp/substrate.json
+      - name: Validate observation
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python - <<'PY'
+          import json
+          from jsonschema import Draft202012Validator
+          s=json.load(open("schemas/substrate-observation.schema.json"))
+          d=json.load(open("/tmp/substrate.json"))
+          Draft202012Validator(s).validate(d)
+          assert d["resources"]["logical_cpus"] >= 1
+          assert d["docker"]["available"] is True
+          print(json.dumps(d,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: substrate-observation
+          path: /tmp/substrate.json
+          retention-days: 14
