@@ -12,10 +12,15 @@ run_schema = json.loads((SCHEMAS / "run-manifest.schema.json").read_text())
 benchmark_source_schema = json.loads(
     (SCHEMAS / "benchmark-source-registry.schema.json").read_text()
 )
+replay_schema = json.loads((SCHEMAS / "replay-spec.schema.json").read_text())
 
-Draft202012Validator.check_schema(reasoning_schema)
-Draft202012Validator.check_schema(run_schema)
-Draft202012Validator.check_schema(benchmark_source_schema)
+for schema in (
+    reasoning_schema,
+    run_schema,
+    benchmark_source_schema,
+    replay_schema,
+):
+    Draft202012Validator.check_schema(schema)
 
 # Resolve the repository-local reasoning-substrate reference without requiring
 # network access or a schema registry.
@@ -25,6 +30,7 @@ run_schema_resolved["properties"]["reasoning_substrate"] = reasoning_schema
 reasoning_validator = Draft202012Validator(reasoning_schema)
 run_validator = Draft202012Validator(run_schema_resolved)
 benchmark_source_validator = Draft202012Validator(benchmark_source_schema)
+replay_validator = Draft202012Validator(replay_schema)
 
 candidates = []
 for base in (ROOT / "examples", ROOT / "campaigns"):
@@ -94,6 +100,53 @@ if registry_path.exists():
                 f"benchmarks/sources.json:{source_id}: "
                 "unresolved-license source must remain methodology-only"
             )
+
+replay_dir = ROOT / "replays"
+if replay_dir.exists():
+    seen_replay_ids = set()
+    for path in sorted(replay_dir.glob("*.json")):
+        spec = json.loads(path.read_text())
+        errors = sorted(replay_validator.iter_errors(spec), key=lambda e: list(e.path))
+        validated += 1
+
+        for error in errors:
+            location = ".".join(str(part) for part in error.path) or "<root>"
+            failures.append(f"{path.relative_to(ROOT)}:{location}: {error.message}")
+
+        replay_id = spec.get("id")
+        if replay_id in seen_replay_ids:
+            failures.append(f"{path.relative_to(ROOT)}: duplicate replay id {replay_id}")
+        seen_replay_ids.add(replay_id)
+
+        environment_ref = spec.get("environment_ref")
+        if isinstance(environment_ref, str):
+            env_path = ROOT / environment_ref
+            if not env_path.is_file():
+                failures.append(
+                    f"{path.relative_to(ROOT)}: environment_ref does not exist: "
+                    f"{environment_ref}"
+                )
+            else:
+                environment = json.loads(env_path.read_text())
+                requirements_file = environment.get("requirements_file")
+                if not isinstance(requirements_file, str):
+                    failures.append(
+                        f"{env_path.relative_to(ROOT)}: requirements_file missing"
+                    )
+                elif not (ROOT / requirements_file).is_file():
+                    failures.append(
+                        f"{env_path.relative_to(ROOT)}: requirements file does not exist: "
+                        f"{requirements_file}"
+                    )
+
+        module = spec.get("module")
+        if isinstance(module, str) and module.startswith("experiments."):
+            module_path = ROOT / (module.replace(".", "/") + ".py")
+            if not module_path.is_file():
+                failures.append(
+                    f"{path.relative_to(ROOT)}: experiment module does not exist: "
+                    f"{module}"
+                )
 
 if failures:
     print("\n".join(failures))
