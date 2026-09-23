@@ -1,0 +1,78 @@
+name: parity-frozen-ood-baseline
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/parity-frozen-ood-baseline.yml"
+      - "docs/parity-frozen-ood-baseline.md"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/parity-frozen-ood-baseline.yml"
+      - "docs/parity-frozen-ood-baseline.md"
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-direct-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU PyTorch
+        run: python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m unittest tests/test_parity_saturation.py -v
+      - name: Run frozen direct baseline
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            SEEDS="0,1,2"
+            STAGES="2,4,8"
+            MAX_EPOCHS="1000"
+            OOD_MIN="9"
+            OOD_MAX="16"
+            OOD_PER_LENGTH="256"
+          else
+            SEEDS="0"
+            STAGES="2,4"
+            MAX_EPOCHS="200"
+            OOD_MIN="5"
+            OOD_MAX="6"
+            OOD_PER_LENGTH="64"
+          fi
+
+          python -m experiments.parity_saturation             --seeds "$SEEDS"             --stages "$STAGES"             --max-epochs-per-stage "$MAX_EPOCHS"             --learning-rate 0.001             --ood-min-length "$OOD_MIN"             --ood-max-length "$OOD_MAX"             --ood-per-length "$OOD_PER_LENGTH"             > /tmp/parity-frozen-ood.json
+      - name: Enforce frozen-baseline admission gate
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/parity-frozen-ood.json"))
+          assert p["evidence_class"] == "benchmark-regime-saturation"
+          assert p["settings"]["learning_rate"] == 0.001
+          assert p["settings"]["evaluate_ood"] is True
+
+          if "${{ github.event_name }}" == "push":
+              assert p["all_seeds_id_saturated"] is True
+              assert p["decision"] == "parity-regime-admitted-for-ood-comparison"
+
+          for result in p["results"]:
+              if result["id_saturated"]:
+                  assert result["final_id_accuracy"] == 1.0
+                  assert result["ood_accuracy_by_length"] is not None
+
+          print(json.dumps({
+              "learning_rate": p["settings"]["learning_rate"],
+              "all_seeds_id_saturated": p["all_seeds_id_saturated"],
+              "decision": p["decision"],
+              "results": p["results"],
+          }, indent=2, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parity-frozen-ood-baseline
+          path: /tmp/parity-frozen-ood.json
+          retention-days: 14
