@@ -1,0 +1,54 @@
+name: pinned-lfs-hydrator-smoke
+
+on:
+  pull_request:
+    paths:
+      - "tools/hydrate_pinned_lfs.py"
+      - "tests/test_pinned_lfs_hydrator.py"
+      - ".github/workflows/pinned-lfs-hydrator-smoke.yml"
+      - "docs/pinned-lfs-hydration.md"
+
+permissions:
+  contents: read
+
+jobs:
+  hydrate:
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest tests/test_pinned_lfs_hydrator.py -v
+      - name: Hydrate exact historical GSM LFS object
+        run: |
+          python tools/hydrate_pinned_lfs.py \
+            --repository da03/Internalize_CoT_Step_by_Step \
+            --revision e06a32ee5e4cd117171daeb4755d2a97ece62761 \
+            --lfs-path data/gsm8k/train.txt \
+            --oid 0a3909a9e7d8d2f7ad6b8c7b5608aa744988d835f9bf874d4cf06ca77df6bf8c \
+            --size 87805358 \
+            --include data/gsm8k/valid.txt \
+            --include data/gsm8k/test.txt \
+            --checkout-dir /tmp/icot-lfs-smoke \
+            --receipt /tmp/lfs-receipt.json
+      - name: Validate hydration receipt
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/lfs-receipt.json"))
+          assert p["evidence_class"]=="pinned-git-lfs-hydration"
+          assert p["revision"]=="e06a32ee5e4cd117171daeb4755d2a97ece62761"
+          assert p["lfs"]["pointer"]["oid_sha256"]=="0a3909a9e7d8d2f7ad6b8c7b5608aa744988d835f9bf874d4cf06ca77df6bf8c"
+          assert p["lfs"]["hydrated_sha256"]==p["lfs"]["pointer"]["oid_sha256"]
+          assert p["lfs"]["hydrated_size_bytes"]==87805358
+          assert len(p["companions"])==2
+          assert p["method"]["shell_invocation"] is False
+          print(json.dumps(p,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-lfs-hydration-receipt
+          path: /tmp/lfs-receipt.json
+          retention-days: 14
