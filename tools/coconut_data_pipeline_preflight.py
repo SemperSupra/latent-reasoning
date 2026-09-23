@@ -54,10 +54,18 @@ def independently_validate_raw(raw_path: Path, processed_path: Path) -> dict:
         if "||" not in line or "##" not in line:
             malformed += 1
             continue
-        question,rest=line.split("||",1)
-        thought,answer_tail=rest.split("##",1)
-        expected_steps=thought.strip().split(" ")
-        expected_answer=answer_tail.strip()
+        # Recompute the pinned preprocessor semantics independently. It takes
+        # the first question segment, the first CoT segment before "##", and
+        # the final answer segment after the LAST "##" (some records contain
+        # additional "##" markers inside the reasoning text).
+        pipe_parts=line.split("||")
+        hash_parts=line.split("##")
+        if len(pipe_parts) < 2 or len(hash_parts) < 2:
+            malformed += 1
+            continue
+        question=pipe_parts[0]
+        expected_steps=pipe_parts[1].split("##")[0].strip().split(" ")
+        expected_answer=hash_parts[-1].strip()
 
         if item["question"] != question:
             raise RuntimeError(f"question mismatch at {raw_path.name}:{index}")
