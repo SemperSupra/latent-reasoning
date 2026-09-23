@@ -31,8 +31,8 @@ jobs:
           git -C /tmp/coconut checkout 27273cb8cca4bb763c041a63b036d0c3b7cbbb48
           test "$(git -C /tmp/coconut rev-parse HEAD)" = "27273cb8cca4bb763c041a63b036d0c3b7cbbb48"
 
-          git clone --filter=blob:none https://github.com/da03/Internalize_CoT_Step_by_Step.git /tmp/icot
-          git -C /tmp/icot checkout e06a32ee5e4cd117171daeb4755d2a97ece62761
+          GIT_LFS_SKIP_SMUDGE=1 git clone --filter=blob:none --no-checkout https://github.com/da03/Internalize_CoT_Step_by_Step.git /tmp/icot
+          GIT_LFS_SKIP_SMUDGE=1 git -C /tmp/icot checkout e06a32ee5e4cd117171daeb4755d2a97ece62761
           test "$(git -C /tmp/icot rev-parse HEAD)" = "e06a32ee5e4cd117171daeb4755d2a97ece62761"
           grep -q "MIT License" /tmp/icot/LICENSE
       - name: Hydrate exact augmented GSM text files
