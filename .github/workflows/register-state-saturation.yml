@@ -1,0 +1,78 @@
+name: register-state-saturation
+
+on:
+  pull_request:
+    paths:
+      - "experiments/register_state_saturation.py"
+      - "tests/test_register_state_saturation.py"
+      - ".github/workflows/register-state-saturation.yml"
+      - "docs/register-state-saturation.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "experiments/register_state_saturation.py"
+      - "tests/test_register_state_saturation.py"
+      - ".github/workflows/register-state-saturation.yml"
+      - "docs/register-state-saturation.md"
+
+permissions:
+  contents: read
+
+jobs:
+  direct-saturation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU PyTorch
+        run: python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m unittest tests/test_register_state_saturation.py -v
+      - name: Run complete-universe register-state saturation
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            SEEDS="0,1,2"
+            STAGES="1,2,3"
+            MAX_EPOCHS="500"
+            OOD_MIN="4"
+            OOD_MAX="6"
+            OOD_PER="512"
+          else
+            SEEDS="0"
+            STAGES="1,2"
+            MAX_EPOCHS="120"
+            OOD_MIN="3"
+            OOD_MAX="4"
+            OOD_PER="128"
+          fi
+
+          python -m experiments.register_state_saturation             --seeds "$SEEDS"             --stages "$STAGES"             --max-epochs-per-stage "$MAX_EPOCHS"             --learning-rate 0.001             --ood-min-steps "$OOD_MIN"             --ood-max-steps "$OOD_MAX"             --ood-per-steps "$OOD_PER"             > /tmp/register-state-saturation.json
+      - name: Validate receipt
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/register-state-saturation.json"))
+          assert p["evidence_class"] == "benchmark-regime-saturation"
+          assert p["family"] == "register-state-mini-v1"
+          assert p["settings"]["registers"] == 2
+          assert p["settings"]["modulus"] == 3
+          for result in p["results"]:
+              if result["id_saturated"]:
+                  assert result["final_id_accuracy"] == 1.0
+                  assert result["ood_accuracy_by_steps"] is not None
+              else:
+                  assert result["ood_accuracy_by_steps"] is None
+          print(json.dumps({
+              "all_seeds_id_saturated": p["all_seeds_id_saturated"],
+              "decision": p["decision"],
+              "results": p["results"],
+          }, indent=2, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: register-state-saturation
+          path: /tmp/register-state-saturation.json
+          retention-days: 14
