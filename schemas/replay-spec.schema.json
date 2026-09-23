@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SemperSupra/latent-reasoning/schemas/replay-spec.schema.json",
+  "title": "Latent Reasoning Replay Spec",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "resource_class",
+    "environment_ref",
+    "module",
+    "arguments",
+    "timeout_seconds"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._/-]*$"
+    },
+    "resource_class": {
+      "enum": ["cpu", "gpu"]
+    },
+    "environment_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "module": {
+      "type": "string",
+      "pattern": "^experiments\\.[A-Za-z0-9_]+$"
+    },
+    "arguments": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "integer", "number"]
+      }
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 7200
+    }
+  }
+}
