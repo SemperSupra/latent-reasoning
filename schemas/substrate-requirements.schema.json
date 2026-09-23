@@ -1,0 +1,38 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://github.com/SemperSupra/latent-reasoning/schemas/substrate-requirements.schema.json",
+  "title":"Replay Substrate Requirements",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["schema_version","id","resource_class","requirements"],
+  "properties":{
+    "schema_version":{"const":1},
+    "id":{"type":"string","pattern":"^[a-z0-9][a-z0-9._/-]*$"},
+    "resource_class":{"enum":["cpu","gpu"]},
+    "requirements":{
+      "type":"object",
+      "additionalProperties":false,
+      "required":[
+        "min_logical_cpus",
+        "min_memory_bytes",
+        "min_disk_free_bytes",
+        "docker_required",
+        "nvidia_required",
+        "min_gpu_count",
+        "min_gpu_memory_mib",
+        "nvidia_container_runtime_required"
+      ],
+      "properties":{
+        "min_logical_cpus":{"type":"integer","minimum":1},
+        "min_memory_bytes":{"type":"integer","minimum":0},
+        "min_disk_free_bytes":{"type":"integer","minimum":0},
+        "docker_required":{"type":"boolean"},
+        "nvidia_required":{"type":"boolean"},
+        "min_gpu_count":{"type":"integer","minimum":0},
+        "min_gpu_memory_mib":{"type":"integer","minimum":0},
+        "nvidia_container_runtime_required":{"type":"boolean"}
+      }
+    },
+    "notes":{"type":"string"}
+  }
+}
