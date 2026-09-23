@@ -6,6 +6,7 @@ on:
       - "upstreams/gsm-icot.json"
       - "requirements-coconut-data-preflight.txt"
       - "tools/coconut_data_pipeline_preflight.py"
+      - "tools/hydrate_pinned_lfs.py"
       - ".github/workflows/coconut-gsm-data-preflight.yml"
       - "docs/coconut-gsm-data-preflight.md"
 
@@ -21,50 +22,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Clone exact Coconut and data-source revisions
+      - name: Clone exact Coconut revision
         run: |
           git clone --filter=blob:none https://github.com/facebookresearch/coconut.git /tmp/coconut
           git -C /tmp/coconut checkout 27273cb8cca4bb763c041a63b036d0c3b7cbbb48
           test "$(git -C /tmp/coconut rev-parse HEAD)" = "27273cb8cca4bb763c041a63b036d0c3b7cbbb48"
 
-          GIT_LFS_SKIP_SMUDGE=1 git clone --filter=blob:none --no-checkout https://github.com/da03/Internalize_CoT_Step_by_Step.git /tmp/icot
-          git -C /tmp/icot lfs install --local
-          # The pinned historical commit predates upstream .gitattributes even
-          # though train.txt is already an LFS pointer. Install only the required
-          # historical path rule locally so checkout can smudge that exact object.
-          printf '%s\n' \
-            'data/gsm8k/train.txt filter=lfs diff=lfs merge=lfs -text' \
-            > /tmp/icot/.git/info/attributes
-
-          git -C /tmp/icot sparse-checkout init --no-cone
-          printf '%s\n' \
-            '/LICENSE' \
-            '/data/gsm8k/train.txt' \
-            '/data/gsm8k/valid.txt' \
-            '/data/gsm8k/test.txt' \
-            > /tmp/icot/.git/info/sparse-checkout
-          git -C /tmp/icot checkout e06a32ee5e4cd117171daeb4755d2a97ece62761
-          test "$(git -C /tmp/icot rev-parse HEAD)" = "e06a32ee5e4cd117171daeb4755d2a97ece62761"
-          grep -q "MIT License" /tmp/icot/LICENSE
-      - name: Hydrate exact augmented GSM text files
+      - name: Hydrate exact augmented GSM source
         run: |
-          # The pinned train file is a Git-LFS object (~88 MiB); valid/test are
-          # ordinary Git blobs. Verify the immutable pointer identity first,
-          # then hydrate from the already-pinned source checkout.
-          git -C /tmp/icot show e06a32ee5e4cd117171daeb4755d2a97ece62761:data/gsm8k/train.txt > /tmp/gsm-train.pointer
-          grep -qx "oid sha256:0a3909a9e7d8d2f7ad6b8c7b5608aa744988d835f9bf874d4cf06ca77df6bf8c" /tmp/gsm-train.pointer
-          grep -qx "size 87805358" /tmp/gsm-train.pointer
+          python tools/hydrate_pinned_lfs.py \
+            --repository da03/Internalize_CoT_Step_by_Step \
+            --revision e06a32ee5e4cd117171daeb4755d2a97ece62761 \
+            --lfs-path data/gsm8k/train.txt \
+            --oid 0a3909a9e7d8d2f7ad6b8c7b5608aa744988d835f9bf874d4cf06ca77df6bf8c \
+            --size 87805358 \
+            --include LICENSE \
+            --include data/gsm8k/valid.txt \
+            --include data/gsm8k/test.txt \
+            --checkout-dir /tmp/icot \
+            --receipt /tmp/gsm-lfs-hydration.json
+
+          grep -q "MIT License" /tmp/icot/LICENSE
 
           mkdir -p /tmp/coconut/data
           cp /tmp/icot/data/gsm8k/train.txt /tmp/coconut/data/gsm_train.txt
           cp /tmp/icot/data/gsm8k/valid.txt /tmp/coconut/data/gsm_valid.txt
           cp /tmp/icot/data/gsm8k/test.txt /tmp/coconut/data/gsm_test.txt
-
-          test "$(wc -c < /tmp/coconut/data/gsm_train.txt)" -eq 87805358
-          echo "0a3909a9e7d8d2f7ad6b8c7b5608aa744988d835f9bf874d4cf06ca77df6bf8c  /tmp/coconut/data/gsm_train.txt" | sha256sum --check --strict
-          test -s /tmp/coconut/data/gsm_valid.txt
-          test -s /tmp/coconut/data/gsm_test.txt
-          ! grep -q "^version https://git-lfs.github.com/spec/v1$" /tmp/coconut/data/gsm_train.txt
       - name: Execute exact Coconut preprocessing
         working-directory: /tmp/coconut
         run: |
@@ -100,5 +83,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: coconut-gsm-data-preflight
-          path: /tmp/coconut-data-preflight.json
+          path: |
+            /tmp/coconut-data-preflight.json
+            /tmp/gsm-lfs-hydration.json
           retention-days: 14
