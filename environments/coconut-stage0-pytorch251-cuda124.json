@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "coconut-stage0-pytorch251-cuda124",
+  "python": "3.11",
+  "requirements_file": "requirements-coconut-stage0.txt",
+  "container_file": "containers/coconut-stage0.Dockerfile",
+  "base_image": "pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime",
+  "base_image_digest": "sha256:c8268a92a69bd500f8be0e665b2630ee006dadaf7bfbc24249141b15ff622755",
+  "resource_class": "gpu",
+  "notes": "Offline two-rank Coconut GSM CoT stage-0 capsule. Exact source, GPT-2, augmented GSM LFS object, processed data, and derived config are embedded and verified."
+}
