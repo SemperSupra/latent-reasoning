@@ -1,0 +1,16 @@
+{
+  "schema_version":1,
+  "id":"campaign-0001/coconut-reference-gpu-smoke",
+  "resource_class":"gpu",
+  "requirements":{
+    "min_logical_cpus":4,
+    "min_memory_bytes":17179869184,
+    "min_disk_free_bytes":32212254720,
+    "docker_required":true,
+    "nvidia_required":true,
+    "min_gpu_count":1,
+    "min_gpu_memory_mib":20000,
+    "nvidia_container_runtime_required":true
+  },
+  "notes":"Conservative admission profile for a bounded Coconut/GPT-2 GPU smoke, not the final full-training resource claim. Full reproduction requirements are derived after observing the sovereign substrate and measuring the smoke."
+}
