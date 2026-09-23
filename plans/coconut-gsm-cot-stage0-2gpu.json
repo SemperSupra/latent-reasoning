@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "id": "campaign-0001/coconut-gsm-cot-stage0-2gpu",
+  "upstream": {
+    "repository": "facebookresearch/coconut",
+    "revision": "27273cb8cca4bb763c041a63b036d0c3b7cbbb48",
+    "config_path": "args/gsm_cot.yaml"
+  },
+  "reference_execution": {
+    "world_size": 4,
+    "per_rank_batch_size": 32,
+    "gradient_accumulation_steps": 1,
+    "effective_global_batch": 128
+  },
+  "target_execution": {
+    "world_size": 2,
+    "per_rank_batch_size": 32,
+    "gradient_accumulation_steps": 2,
+    "effective_global_batch": 128,
+    "launcher": "torchrun",
+    "wandb_mode": "offline"
+  },
+  "allowed_config_overrides": {
+    "save_path": "/out/checkpoints",
+    "name": "gsm-cot-stage0-2gpu",
+    "model_id": "/opt/models/gpt2",
+    "train_path": "/opt/coconut/data/gsm_train.json",
+    "val_path": "/opt/coconut/data/gsm_valid.json",
+    "gradient_accumulation_steps": 2
+  },
+  "immutable_inputs": {
+    "backbone_revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+    "gsm_source_revision": "e06a32ee5e4cd117171daeb4755d2a97ece62761",
+    "gsm_train_sha256": "0a3909a9e7d8d2f7ad6b8c7b5608aa744988d835f9bf874d4cf06ca77df6bf8c"
+  },
+  "notes": "Resource-adapted paper-reference stage-0 CoT plan. Scientific hyperparameters stay upstream-identical except gradient accumulation needed to preserve effective global batch on two ranks."
+}
