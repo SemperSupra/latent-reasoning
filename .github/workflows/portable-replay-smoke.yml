@@ -1,0 +1,58 @@
+name: portable-replay-smoke
+
+on:
+  pull_request:
+    paths:
+      - "schemas/replay-spec.schema.json"
+      - "environments/python312-torch251-cpu.json"
+      - "requirements-experiment-cpu.txt"
+      - "tools/run_replay.py"
+      - "tests/test_replay_runner.py"
+      - "replays/*.json"
+      - ".github/workflows/portable-replay-smoke.yml"
+      - "docs/portable-replay.md"
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install portable CPU environment
+        run: python -m pip install -r requirements-experiment-cpu.txt
+      - run: python -m unittest tests/test_replay_runner.py -v
+      - name: Execute the runner-neutral replay spec
+        run: |
+          python tools/run_replay.py             replays/register-state-k-sweep-smoke.json             --output /tmp/scientific-receipt.json             --metadata /tmp/replay-metadata.json
+      - name: Verify replay evidence
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open("/tmp/scientific-receipt.json"))
+          m=json.load(open("/tmp/replay-metadata.json"))
+          assert r["evidence_class"]=="recurrent-depth-sweep"
+          assert r["family"]=="register-state-mini-v1"
+          assert m["replay_spec_id"]=="campaign-0001/register-state-k-sweep-smoke"
+          assert m["execution"]["github_actions"] is True
+          assert m["scientific_receipt_sha256"]
+          print(json.dumps({
+              "replay_spec_id":m["replay_spec_id"],
+              "git_head":m["git_head"],
+              "elapsed_seconds":m["execution"]["elapsed_seconds"],
+              "scientific_receipt_sha256":m["scientific_receipt_sha256"],
+              "valid_ks":r["valid_ks"],
+          },indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-replay-smoke
+          path: |
+            /tmp/scientific-receipt.json
+            /tmp/replay-metadata.json
+          retention-days: 14
