@@ -1,0 +1,58 @@
+name: coconut-gpu-capsule-build
+
+on:
+  pull_request:
+    paths:
+      - "containers/coconut-gpu-smoke.Dockerfile"
+      - "experiments/coconut_gpu_smoke.py"
+      - "replays/coconut-reference-gpu-smoke.json"
+      - "environments/pytorch251-cuda124-cudnn9-gpu.json"
+      - "requirements-coconut-gpu-smoke.txt"
+      - "upstreams/coconut.json"
+      - "tests/test_coconut_gpu_capsule.py"
+      - ".github/workflows/coconut-gpu-capsule-build.yml"
+      - "docs/coconut-gpu-smoke-capsule.md"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-refuse-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest tests/test_coconut_gpu_capsule.py -v
+      - name: Observe and reject GPU placement before build execution
+        run: |
+          python tools/observe_substrate.py > /tmp/substrate.json
+          python tools/check_substrate_compatibility.py \
+            /tmp/substrate.json \
+            profiles/coconut-reference-gpu-smoke.json \
+            --output /tmp/compatibility.json
+          python - <<'PY'
+          import json
+          p=json.load(open("/tmp/compatibility.json"))
+          assert p["decision"]=="do-not-apply"
+          assert p["compatible"] is False
+          assert "nvidia_device_visibility_unavailable" in p["blocking_reasons"]
+          print(json.dumps(p,indent=2,sort_keys=True))
+          PY
+      - name: Build exact offline GPU smoke capsule
+        run: |
+          docker build \
+            --build-arg SOURCE_REVISION="$GITHUB_SHA" \
+            -f containers/coconut-gpu-smoke.Dockerfile \
+            -t latent-reasoning-coconut-gpu-smoke:ci \
+            .
+      - name: Verify capsule identities without applying GPU workload
+        run: |
+          docker run --rm --entrypoint python \
+            latent-reasoning-coconut-gpu-smoke:ci \
+            -c 'import json, os, pathlib, torch, transformers; assert pathlib.Path("/opt/coconut/coconut.py").is_file(); assert pathlib.Path("/opt/coconut/SOURCE_REVISION").read_text().strip()==os.environ["COCONUT_REVISION"]; assert pathlib.Path("/opt/models/gpt2/model.safetensors").is_file(); assert pathlib.Path("/opt/models/gpt2/SOURCE_REVISION").read_text().strip()==os.environ["GPT2_REVISION"]; assert transformers.__version__=="4.46.2"; print(json.dumps({"torch":torch.__version__,"torch_cuda":torch.version.cuda,"transformers":transformers.__version__,"coconut_revision":os.environ["COCONUT_REVISION"],"gpt2_revision":os.environ["GPT2_REVISION"],"cuda_visible_in_gha":torch.cuda.is_available(),"container_contract":os.environ["LATENT_REASONING_CONTAINER"]},sort_keys=True))'
+      - name: Prove GPU replay was not applied
+        run: |
+          test ! -e /tmp/coconut-gpu-scientific-receipt.json
