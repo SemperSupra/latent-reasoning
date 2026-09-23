@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "campaign-0001/coconut-gsm-cot-stage0-2gpu",
+  "resource_class": "gpu",
+  "requirements": {
+    "min_logical_cpus": 4,
+    "min_memory_bytes": 17179869184,
+    "min_disk_free_bytes": 42949672960,
+    "docker_required": true,
+    "nvidia_required": true,
+    "min_gpu_count": 2,
+    "min_gpu_memory_mib": 20000,
+    "nvidia_container_runtime_required": true
+  },
+  "notes": "Initial fail-closed admission floor for the two-rank GPT-2 stage-0 CoT reproduction. This is a placement floor to be refined with measured sovereign smoke/training receipts, not a final performance requirement claim."
+}
