@@ -1,0 +1,57 @@
+name: containerized-replay-smoke
+
+on:
+  pull_request:
+    paths:
+      - "containers/cpu-replay.Dockerfile"
+      - ".dockerignore"
+      - "tools/run_replay.py"
+      - "requirements-experiment-cpu.txt"
+      - "experiments/**"
+      - "replays/register-state-k-sweep-smoke.json"
+      - ".github/workflows/containerized-replay-smoke.yml"
+      - "docs/containerized-replay.md"
+
+permissions:
+  contents: read
+
+jobs:
+  container-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build disposable replay image
+        run: |
+          docker build             --build-arg SOURCE_REVISION="$GITHUB_SHA"             -f containers/cpu-replay.Dockerfile             -t latent-reasoning-cpu-replay:ci             .
+      - name: Execute same replay spec in container
+        run: |
+          mkdir -p "$RUNNER_TEMP/latent-replay-out"
+          docker run --rm             -e GITHUB_ACTIONS=true             -e RUNNER_OS="$RUNNER_OS"             -e RUNNER_ARCH="$RUNNER_ARCH"             -v "$RUNNER_TEMP/latent-replay-out:/out"             latent-reasoning-cpu-replay:ci             replays/register-state-k-sweep-smoke.json             --output /out/scientific-receipt.json             --metadata /out/replay-metadata.json
+      - name: Verify container replay identity
+        run: |
+          python - <<'PY'
+          import json, os
+          root=os.path.join(os.environ["RUNNER_TEMP"],"latent-replay-out")
+          r=json.load(open(os.path.join(root,"scientific-receipt.json")))
+          m=json.load(open(os.path.join(root,"replay-metadata.json")))
+          assert r["evidence_class"]=="recurrent-depth-sweep"
+          assert m["source_revision"]==os.environ["GITHUB_SHA"]
+          assert m["git_head"] is None
+          assert m["execution"]["container_contract"]=="cpu-replay-v1"
+          assert m["execution"]["github_actions"] is True
+          print(json.dumps({
+              "source_revision":m["source_revision"],
+              "container_contract":m["execution"]["container_contract"],
+              "replay_spec_id":m["replay_spec_id"],
+              "scientific_receipt_sha256":m["scientific_receipt_sha256"],
+              "valid_ks":r["valid_ks"],
+          },indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: containerized-replay-smoke
+          path: |
+            ${{ runner.temp }}/latent-replay-out/scientific-receipt.json
+            ${{ runner.temp }}/latent-replay-out/replay-metadata.json
+          retention-days: 14
