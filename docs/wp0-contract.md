@@ -63,3 +63,4 @@ The manifest is input/provenance configuration. Model Spelunker receipts remain 
 4. A latent result is not promoted without a meaningful serial-compute control where technically possible.
 5. Artifact identity and behavioral qualification remain separate authorities.
 6. Private holdout contents never need to enter the public repository.
+7. GitHub Actions is primarily a method-development and execution-learning substrate for Campaign 0001, not the final efficacy authority. GHA results may establish reproducibility, control validity, automation behavior, and preliminary descriptive observations; stronger capability claims require later replay on the intended sovereign/local substrate with that substrate recorded as an independent qualification variable.
