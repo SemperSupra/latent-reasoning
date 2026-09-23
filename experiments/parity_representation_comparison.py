@@ -191,6 +191,7 @@ def train_one(
     ood_min_length: int,
     ood_max_length: int,
     ood_per_length: int,
+    evaluate_ood: bool = True,
 ) -> TreatmentSeedResult:
     torch.manual_seed(seed)
     random.seed(seed)
@@ -276,7 +277,7 @@ def train_one(
 
     ood_by_length = None
     mean_ood = None
-    if id_saturated:
+    if id_saturated and evaluate_ood:
         sampled = sampled_ood_examples(
             seed + 900000,
             min_length=ood_min_length,
