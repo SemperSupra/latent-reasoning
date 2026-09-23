@@ -45,7 +45,8 @@ jobs:
           grep -qx "size 87805358" /tmp/gsm-train.pointer
 
           git -C /tmp/icot lfs install --local
-          git -C /tmp/icot lfs pull --include="data/gsm8k/train.txt" --exclude=""
+          git -C /tmp/icot lfs fetch origin e06a32ee5e4cd117171daeb4755d2a97ece62761 --include="data/gsm8k/train.txt" --exclude=""
+          git -C /tmp/icot lfs checkout data/gsm8k/train.txt
 
           mkdir -p /tmp/coconut/data
           cp /tmp/icot/data/gsm8k/train.txt /tmp/coconut/data/gsm_train.txt
