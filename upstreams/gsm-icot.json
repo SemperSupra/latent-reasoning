@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "coconut-gsm-icot-data",
+  "consumer": "facebookresearch/coconut",
+  "consumer_revision": "27273cb8cca4bb763c041a63b036d0c3b7cbbb48",
+  "source_repository": "da03/Internalize_CoT_Step_by_Step",
+  "source_revision": "e06a32ee5e4cd117171daeb4755d2a97ece62761",
+  "source_license": {
+    "status": "explicit",
+    "spdx_id": "MIT",
+    "evidence_path": "LICENSE"
+  },
+  "underlying_dataset": {
+    "id": "GSM8K",
+    "license": "MIT",
+    "notes": "The augmented files used by Coconut are consumed from the pinned Internalize CoT repository; original GSM8K provenance remains recorded separately."
+  },
+  "files": {
+    "train": "data/gsm8k/train.txt",
+    "valid": "data/gsm8k/valid.txt",
+    "test": "data/gsm8k/test.txt",
+    "train_lfs": {
+      "oid_sha256": "0a3909a9e7d8d2f7ad6b8c7b5608aa744988d835f9bf874d4cf06ca77df6bf8c",
+      "size_bytes": 87805358,
+      "pointer_blob_sha": "853a81e17863e3e42b90a856a0a1535294f8cc7e"
+    }
+  },
+  "handling": "pinned-external-source-no-corpus-vendoring"
+}
