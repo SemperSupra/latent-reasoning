@@ -1,0 +1,44 @@
+name: meg-phi2-source-preflight
+
+on:
+  pull_request:
+    paths:
+      - "tools/meg_phi2_source_preflight.py"
+      - "tests/test_meg_phi2_source_preflight.py"
+      - "docs/rdte/meg-phi2-source-preflight.md"
+      - ".github/workflows/meg-phi2-source-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Run offline deterministic contract tests
+        run: python3 -m unittest discover -s tests -p 'test_meg_phi2_source_preflight.py' -v
+      - name: Fetch exact, immutable MeG source without executing it
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/meg-upstream"
+          git -C "$RUNNER_TEMP/meg-upstream" init -q
+          git -C "$RUNNER_TEMP/meg-upstream" remote add origin https://github.com/RodeWayne/MeG-for-Knowledge-Editing.git
+          git -C "$RUNNER_TEMP/meg-upstream" fetch --depth=1 origin 9fa8ae10cf33c82dd2200057f70dfcb73388cd74
+          git -C "$RUNNER_TEMP/meg-upstream" checkout -q --detach FETCH_HEAD
+      - name: Audit exact Phi-2 source, configs and missing assets
+        run: |
+          python3 tools/meg_phi2_source_preflight.py \
+            --source "$RUNNER_TEMP/meg-upstream" \
+            --output "$RUNNER_TEMP/meg-phi2-preflight.json"
+      - name: Publish sanitized source-only receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: meg-phi2-source-preflight
+          path: ${{ runner.temp }}/meg-phi2-preflight.json
+          retention-days: 7
+          if-no-files-found: error
