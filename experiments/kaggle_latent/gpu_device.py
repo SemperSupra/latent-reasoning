@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Kaggle T4x2 public-synthetic CUDA qualification; not latent efficacy evidence."""
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -40,7 +41,8 @@ def probe():
     return evidence, None
 
 def main():
-    result = {"schema": SCHEMA, "workload": WORKLOAD, "status": "FAIL"}
+    result = {"schema": SCHEMA, "workload": WORKLOAD, "status": "FAIL",
+              "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
     try:
         metrics, failure = probe()
         result["metrics"] = metrics

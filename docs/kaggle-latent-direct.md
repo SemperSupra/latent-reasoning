@@ -13,6 +13,8 @@ This is a one-shot GHA launcher. It does not use Agent Dispatch, sidecar, schedu
 - Kaggle kernel metadata always specifies private notebook, Internet disabled, empty external sources, fixed accelerator and short bounded timeout.
 - Submit checks authenticated account quota, scans existing targeted notebook identifiers and active known experiments, and refuses duplicates. It exits only after a provider-native version is returned. It does not claim a completed scientific result.
 - Observe requires an exact provider-native version, refuses version drift and independently validates the terminal result and arithmetic/training metrics.
+- The Kaggle script now includes the SHA256 of its **actual executed run.py bytes** in its native scientific receipt. The observer compares it with the exact reviewed source SHA; missing, modified or injected source identity is a hard failure, even if the numerical metrics otherwise pass. TPU cosine scores must also be finite, within [-1,1], and not boolean.
+- This control is an additive defense to provider-native version verification, not proof that Kaggle itself is an independently trusted execution environment. Previously submitted notebooks are not automatically backfilled with the new evidence field.
 - Only sanitized allowlisted control receipts may be uploaded to the public GitHub run. No raw provider logs, secrets or Kaggle datasets.
 
 ## Workload GPU: gpu-cuda-v1

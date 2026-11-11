@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -147,10 +148,16 @@ def require_native_version(api, user: str, slug: str, expected: int) -> None:
     if not isinstance(actual, int) or actual != expected:
         raise Denied("NATIVE_VERSION_UNVERIFIED_OR_DRIFTED")
 
-def verify_science(result: dict, workload: str) -> dict:
+def verify_science(result: dict, workload: str, expected_source_sha256: str) -> dict:
     if (not isinstance(result, dict) or result.get("schema") != RESULT_SCHEMA
         or result.get("workload") != workload or result.get("status") != "PASS"):
         raise Denied("SCIENTIFIC_RECEIPT_INVALID")
+    # The Kaggle worker hashes the actual run.py bytes (copied verbatim from the
+    # pinned source). Native version alone does not bind a result to those bytes.
+    if (not isinstance(expected_source_sha256, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", expected_source_sha256)
+        or result.get("source_sha256") != expected_source_sha256):
+        raise Denied("EXECUTED_SOURCE_NOT_ATTESTED")
     m = result.get("metrics")
     if not isinstance(m, dict):
         raise Denied("SCIENTIFIC_METRICS_MISSING")
@@ -170,7 +177,9 @@ def verify_science(result: dict, workload: str) -> dict:
         or m.get("scope") != "synthetic-method-sanity-only"):
         raise Denied("TPU_HARDWARE_ORACLE_FAILED")
     score, control = m.get("heldout_cosine"), m.get("shuffled_control_cosine")
-    if (not isinstance(score, (int, float)) or not isinstance(control, (int, float))
+    if (type(score) not in (int, float) or type(control) not in (int, float)
+        or not math.isfinite(score) or not math.isfinite(control)
+        or not (-1 <= score <= 1 and -1 <= control <= 1)
         or not (score >= 0.75 and score - control >= 0.45)):
         raise Denied("TPU_BRIDGE_ORACLE_FAILED")
     return {"tpu_count": 8, "tpu_arithmetic_checksum": 148.0,
@@ -200,7 +209,7 @@ def observe(api, p: dict, out: Path) -> dict:
         scientific = json.loads(raw.decode("utf-8"))
     except (UnicodeError, ValueError):
         raise Denied("RESULT_JSON_INVALID")
-    result = verify_science(scientific, p["workload"])
+    result = verify_science(scientific, p["workload"], p["source_sha256"])
     return {"state": "TERMINAL_VERIFIED", "is_terminal": True,
             "native_version": version, "science_sha256": sha256(raw),
             "verified_metrics": result}

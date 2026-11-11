@@ -1,4 +1,5 @@
 """Offline no-network contract tests for the Kaggle direct path."""
+import hashlib
 import importlib.util
 from pathlib import Path
 import unittest
@@ -46,32 +47,34 @@ class TestKaggleLatentDirect(unittest.TestCase):
             module.metadata("user/../../other", p)
 
     def test_gpu_oracle(self):
+        expected = module.plan("plan", "gpu-cuda-v1")["source_sha256"]
         result = {"schema": module.RESULT_SCHEMA, "workload": "gpu-cuda-v1",
-                  "status": "PASS", "metrics": {
+                  "status": "PASS", "source_sha256": expected, "metrics": {
                     "gpu_count": 2, "requested_accelerator": "NvidiaTeslaT4",
                     "device_models": ["Tesla T4", "Tesla T4"],
                     "device_arithmetic_checksums": [8386560.0, 8386560.0]}}
-        self.assertEqual(module.verify_science(result, "gpu-cuda-v1")["gpu_count"], 2)
+        self.assertEqual(module.verify_science(result, "gpu-cuda-v1", expected)["gpu_count"], 2)
         result["metrics"]["device_arithmetic_checksums"][1] = 0.0
         with self.assertRaises(module.Denied):
-            module.verify_science(result, "gpu-cuda-v1")
+            module.verify_science(result, "gpu-cuda-v1", expected)
 
     def test_tpu_oracle_and_shuffled_control(self):
+        expected = module.plan("plan", "tpu-bridge-v1")["source_sha256"]
         result = {"schema": module.RESULT_SCHEMA, "workload": "tpu-bridge-v1",
-                  "status": "PASS", "metrics": {
+                  "status": "PASS", "source_sha256": expected, "metrics": {
                     "requested_accelerator": "TpuV5E8", "tpu_count": 8,
                     "jax_backend_tpu": True, "tpu_arithmetic": True,
                     "tpu_arithmetic_checksum": 148.0, "data_parallel_devices": 8,
                     "scope": "synthetic-method-sanity-only",
                     "heldout_cosine": 0.95, "shuffled_control_cosine": 0.10}}
-        self.assertEqual(module.verify_science(result, "tpu-bridge-v1")["tpu_count"], 8)
+        self.assertEqual(module.verify_science(result, "tpu-bridge-v1", expected)["tpu_count"], 8)
         result["metrics"]["shuffled_control_cosine"] = 0.85
         with self.assertRaises(module.Denied):
-            module.verify_science(result, "tpu-bridge-v1")
+            module.verify_science(result, "tpu-bridge-v1", expected)
 
     def test_bad_scientific_receipt(self):
         with self.assertRaises(module.Denied):
-            module.verify_science({"schema": "other"}, "gpu-cuda-v1")
+            module.verify_science({"schema": "other"}, "gpu-cuda-v1", "0" * 64)
 
     def test_quota_unknown_and_insufficient_fail_closed(self):
         from datetime import timedelta
@@ -135,6 +138,49 @@ class TestKaggleLatentDirect(unittest.TestCase):
         self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
         self.assertIn("environment: kaggle-research", workflow)
         self.assertIn("if: github.event_name == 'pull_request'", workflow)
+
+
+    def test_source_hash_is_execution_bound_and_not_optional(self):
+        for workload in module.WORKLOADS:
+            plan = module.plan("plan", workload)
+            f = Path(plan["source_path"])
+            self.assertEqual(hashlib.sha256(f.read_bytes()).hexdigest(), plan["source_sha256"])
+            text = f.read_text()
+            self.assertIn('hashlib.sha256(Path(__file__).read_bytes()).hexdigest()', text)
+
+        expected = module.plan("plan", "gpu-cuda-v1")["source_sha256"]
+        metrics = {"gpu_count": 2, "requested_accelerator": "NvidiaTeslaT4",
+                   "device_models": ["Tesla T4", "Tesla T4"],
+                   "device_arithmetic_checksums": [8386560.0, 8386560.0]}
+        valid = {"schema": module.RESULT_SCHEMA, "workload": "gpu-cuda-v1",
+                 "status": "PASS", "source_sha256": expected, "metrics": metrics}
+        self.assertEqual(module.verify_science(valid, "gpu-cuda-v1", expected)["gpu_count"], 2)
+        for invalid in (None, "", "0" * 64, 43, "F" * 64):
+            changed = dict(valid)
+            if invalid is None:
+                changed.pop("source_sha256")
+            else:
+                changed["source_sha256"] = invalid
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(module.Denied, "SOURCE"):
+                module.verify_science(changed, "gpu-cuda-v1", expected)
+        with self.assertRaisesRegex(module.Denied, "SOURCE"):
+            module.verify_science(valid, "gpu-cuda-v1", "x")
+
+    def test_tpu_nonfinite_out_of_range_and_bool_scores_rejected(self):
+        import math
+        expected = module.plan("plan", "tpu-bridge-v1")["source_sha256"]
+        base = {"requested_accelerator": "TpuV5E8", "tpu_count": 8,
+                "jax_backend_tpu": True, "tpu_arithmetic": True,
+                "tpu_arithmetic_checksum": 148.0, "data_parallel_devices": 8,
+                "scope": "synthetic-method-sanity-only",
+                "heldout_cosine": .95, "shuffled_control_cosine": .10}
+        for score in (float("inf"), float("nan"), -float("inf"), 1.5, True):
+            with self.subTest(score=score):
+                metrics = dict(base, heldout_cosine=score)
+                record = {"schema": module.RESULT_SCHEMA, "workload": "tpu-bridge-v1",
+                          "status": "PASS", "source_sha256": expected, "metrics": metrics}
+                with self.assertRaisesRegex(module.Denied, "BRIDGE"):
+                    module.verify_science(record, "tpu-bridge-v1", expected)
 
 if __name__ == "__main__":
     unittest.main()

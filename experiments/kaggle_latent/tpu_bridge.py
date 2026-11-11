@@ -5,6 +5,7 @@ No private data, network, user input or model weights. This establishes
 hardware and an elementary trainable latent bridge, not reasoning efficacy.
 """
 from functools import partial
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -84,7 +85,8 @@ def probe():
     return metrics, None
 
 def main():
-    result = {"schema": SCHEMA, "workload": WORKLOAD, "status": "FAIL"}
+    result = {"schema": SCHEMA, "workload": WORKLOAD, "status": "FAIL",
+              "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
     try:
         metrics, failure = probe()
         result["metrics"] = metrics
