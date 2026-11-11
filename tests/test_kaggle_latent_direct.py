@@ -73,5 +73,68 @@ class TestKaggleLatentDirect(unittest.TestCase):
         with self.assertRaises(module.Denied):
             module.verify_science({"schema": "other"}, "gpu-cuda-v1")
 
+    def test_quota_unknown_and_insufficient_fail_closed(self):
+        from datetime import timedelta
+        from types import SimpleNamespace
+        class Fake:
+            def quota_view(self):
+                return SimpleNamespace(gpu_quota=SimpleNamespace(
+                    time_used=timedelta(seconds=590),
+                    total_time_allowed=timedelta(seconds=600)),
+                    tpu_quota=None)
+        with self.assertRaises(module.Denied):
+            module.quota(Fake(), module.plan("submit", "gpu-cuda-v1"))
+        with self.assertRaises(module.Denied):
+            module.quota(Fake(), module.plan("submit", "tpu-bridge-v1"))
+
+    def test_existing_target_blocks_duplicate_submission(self):
+        from types import SimpleNamespace
+        p = module.plan("submit", "gpu-cuda-v1")
+        target = "user/" + p["slug"]
+        class Fake:
+            def kernels_list_with_response(self, **kwargs):
+                return SimpleNamespace(kernels=[SimpleNamespace(ref=target)],
+                                       next_page_token=None)
+        with self.assertRaisesRegex(module.Denied, "TARGET_EXISTS"):
+            module.ensure_not_existing_or_active(Fake(), target)
+
+    def test_other_active_experiment_blocks_submission(self):
+        from types import SimpleNamespace
+        class Fake:
+            def kernels_list_with_response(self, **kwargs):
+                return SimpleNamespace(
+                    kernels=[SimpleNamespace(ref="user/ad-rdte-active-other")],
+                    next_page_token=None)
+            def kernels_status(self, ref):
+                return SimpleNamespace(status="RUNNING")
+        with self.assertRaisesRegex(module.Denied, "ACTIVE"):
+            module.ensure_not_existing_or_active(
+                Fake(), "user/latent-c001-gpu-cuda-v1")
+
+    def test_credentialless_submit_is_blocked_before_importing_kaggle(self):
+        import json
+        import os
+        import sys
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            argv = ["kaggle_latent_direct.py", "--action", "submit",
+                    "--workload", "gpu-cuda-v1", "--out-dir", tmp]
+            with patch.object(sys, "argv", argv), patch.dict(
+                    os.environ, {"KAGGLE_API_TOKEN": ""}):
+                self.assertEqual(module.main(), 2)
+            with open(Path(tmp) / "control-receipt.json", encoding="utf-8") as stream:
+                receipt = json.load(stream)
+            self.assertEqual(receipt["state"], "BLOCKED")
+            self.assertEqual(receipt["failure_class"], "NO_KAGGLE_ENV_TOKEN")
+
+    def test_pr_workflow_contains_no_credentialed_execution(self):
+        workflow = (ROOT / ".github/workflows/latent-kaggle-direct.yml"
+                    ).read_text(encoding="utf-8")
+        self.assertIn("github.ref == 'refs/heads/main'", workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn("environment: kaggle-research", workflow)
+        self.assertIn("if: github.event_name == 'pull_request'", workflow)
+
 if __name__ == "__main__":
     unittest.main()
