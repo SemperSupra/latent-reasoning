@@ -8,6 +8,8 @@ on:
       - "requirements-experiment-cpu.txt"
       - "tools/run_replay.py"
       - "tests/test_replay_runner.py"
+      - "tests/test_causal_slot_smoke.py"
+      - "experiments/causal_slot_smoke.py"
       - "replays/*.json"
       - ".github/workflows/portable-replay-smoke.yml"
       - "docs/portable-replay.md"
@@ -49,10 +51,46 @@ jobs:
               "valid_ks":r["valid_ks"],
           },indent=2,sort_keys=True))
           PY
+      - name: Verify causal-slot instrumentation controls
+        run: python -m unittest tests/test_causal_slot_smoke.py -v
+      - name: Execute bounded WP7a causal-slot replay
+        run: |
+          python tools/run_replay.py \
+            replays/causal-slot-smoke.json \
+            --output /tmp/causal-scientific-receipt.json \
+            --metadata /tmp/causal-replay-metadata.json
+      - name: Verify causal-smoke scientific and provenance gates
+        run: |
+          python - <<'PY'
+          import json,os
+          r=json.load(open("/tmp/causal-scientific-receipt.json"))
+          m=json.load(open("/tmp/causal-replay-metadata.json"))
+          assert r["evidence_class"]=="causal-slot-method-smoke"
+          assert r["family"]=="register-state-mini-v1"
+          assert r["resource_class"]=="cpu"
+          assert len(r["records"])==len(r["settings"]["seeds"])
+          assert m["replay_spec_id"]=="campaign-0001/wp7a-causal-slot-method-smoke"
+          assert m["git_head"]==os.environ["GITHUB_SHA"]
+          assert m["scientific_receipt_sha256"]
+          for row in r["records"]:
+              assert row["latent_fit"]["encoder_passes_per_input"]==2
+              assert row["serial_fit"]["encoder_passes_per_input"]==2
+              assert row["interventions"]["clone-noop"]["prediction_flip_rate"]==0.0
+              assert row["interventions"]["untouched"]["prediction_flip_rate"]==0.0
+          print(json.dumps({
+              "source_sha":m["git_head"],
+              "scientific_receipt_sha256":m["scientific_receipt_sha256"],
+              "paired_id_gate":r["all_paired_id_gates_passed"],
+              "evidence_class":r["evidence_class"],
+          },sort_keys=True))
+          PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: portable-replay-smoke
           path: |
             /tmp/scientific-receipt.json
             /tmp/replay-metadata.json
+            /tmp/causal-scientific-receipt.json
+            /tmp/causal-replay-metadata.json
           retention-days: 14
