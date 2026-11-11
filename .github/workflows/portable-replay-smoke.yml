@@ -68,7 +68,7 @@ jobs:
           assert r["evidence_class"]=="causal-slot-method-smoke"
           assert r["family"]=="register-state-mini-v1"
           assert r["resource_class"]=="cpu"
-          assert len(r["records"])==1
+          assert len(r["records"])==len(r["settings"]["seeds"])
           assert m["replay_spec_id"]=="campaign-0001/wp7a-causal-slot-method-smoke"
           assert m["git_head"]==os.environ["GITHUB_SHA"]
           assert m["scientific_receipt_sha256"]
@@ -85,6 +85,7 @@ jobs:
           },sort_keys=True))
           PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: portable-replay-smoke
           path: |
