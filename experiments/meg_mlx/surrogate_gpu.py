@@ -5,8 +5,10 @@ This is an original synthetic surrogate (NOT author MeG code or reproduction).
 Explicit GPU, bounded matrices, no models, no datasets, no credentials.
 """
 import hashlib
+import importlib.metadata
 import json
 import platform
+import subprocess
 import sys
 
 import mlx
@@ -79,7 +81,8 @@ def run() -> dict:
         "arch": platform.machine(),
         "macos": platform.mac_ver()[0],
         "python": sys.version.split()[0],
-        "mlx": getattr(mlx, "__version__", "unknown"),
+        "mlx": importlib.metadata.version("mlx"),
+        "physical_memory_bytes": int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True).strip()),
         "numpy": np.__version__,
         "shapes": {"inputs": [2, 32], "up": [32, 48], "down": [48, 32]},
         "zero_intervention_exact": True,
