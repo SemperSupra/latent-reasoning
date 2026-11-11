@@ -129,5 +129,33 @@ class BridgeContracts(unittest.TestCase):
         self.assertTrue(np.any(np.abs(np.asarray(grad)) > 1e-9))
 
 
+    def test_real_phi2_layer_dimensions_without_checkpoint(self):
+        """2560->10240->2560 structural check, not whole model inference."""
+        width, intermediate = 2560, 10240
+        mlp = PhiMLP(SimpleNamespace(
+            hidden_size=width, intermediate_size=intermediate
+        ))
+        target = SimpleNamespace(
+            model=SimpleNamespace(layers=[SimpleNamespace(mlp=mlp)])
+        )
+        x = mx.ones((1, 1, width), dtype=mx.float32) / width
+        baseline = mlp(x)
+        original = snapshot_phi2_neuron(mlp)
+        replacement = Phi2NeuronWeights(
+            original.fc1_row + 0.001,
+            original.fc1_bias + 0.001,
+            original.fc2_column + 0.001,
+        )
+        patch = attach_phi2_neuron(
+            target, layer=0, weights=replacement, strength=0.25
+        )
+        result = target.model.layers[0].mlp(x)
+        mx.eval(baseline, result)
+        self.assertEqual(result.shape, (1, 1, width))
+        self.assertTrue(np.isfinite(np.asarray(result)).all())
+        self.assertFalse(np.array_equal(np.asarray(baseline), np.asarray(result)))
+        detach_phi2_neuron(target, layer=0, patch=patch)
+        self.assertIs(target.model.layers[0].mlp, mlp)
+
 if __name__ == "__main__":
     unittest.main()
