@@ -34,3 +34,33 @@ Next separately gated steps: test full Phi-2 artifact size and memory admission 
 
 ## Data boundary
 Allowlist only public original synthetic tensors and sanitized receipts. Do not import private holdouts into PR runs. Keep this lane independent of draft Kaggle PR #45 and upstream source audit PR #47.
+
+## Owner clarification: MLX build first, local experiments later
+
+The macOS public runners are a **prebuild / compatibility** lane only, not an experimental execution venue. The project builds `meg-mlx-bridge==0.1.0` from `experiments/meg_mlx/framework` as a pure Python wheel, installs that wheel in a fresh runner context, and tests actual `mlx_lm.models.phi.PhiMLP` interoperability using 32-dimensional synthetic fixtures. Both `macos-26` and `xcode-27` use bounded memory and must explicitly execute MLX GPU.
+
+The adapter supports:
+- MeG's Phi-2 one-neuron `params_0.json` schema (last `fc1` row, last bias, last `fc2` column), with strict shape validation and JSON roundtrip;
+- reversible, frozen-backbone last-neuron **replacement** via an MLX-LM MLP wrapper (not addition of an extra neuron);
+- a zero-strength exact no-op; direct full-weight replacement comparison; gradient flow through generated neuron weights;
+- the deterministic controller protocol for a later diffusion-weight generator.
+
+**The original MeG diffusion controller, familiarity network, text encoder and training pipeline are not yet ported.** A passing wheel build does *not* qualify those components, nor does it reproduce any author score. The scientific fidelity spine remains the original upstream PyTorch/CUDA implementation.
+
+### Local BigMac consumption
+
+After accepting a reviewed PR/build receipt, download the `meg-mlx-wheel-macos-26` or `meg-mlx-wheel-xcode-27` artifact from its exact GitHub Actions run. Verify the wheel SHA-256 against `build-receipt.json`. On the local Mac:
+
+```bash
+python3.11 -m venv ~/Projects/meg-mlx-venv
+source ~/Projects/meg-mlx-venv/bin/activate
+python -m pip install 'mlx==0.32.4' 'mlx-lm==0.31.3' 'numpy==2.1.1'
+python -m pip install --no-deps ./meg_mlx_bridge-0.1.0-py3-none-any.whl
+python -c 'import meg_mlx_bridge; print("MLX bridge imported")'
+```
+
+The filename above is a *wheel build output convention*, not a claim that a local artifact has been installed. The future local Phi-2 checkpoint test must pin its exact source, tokenizer and hash and use the Mac's distinct environment identity; inference/editing results may not inherit from GitHub-hosted runner evidence.
+
+### Next engineering stage, outside the present wheel gate
+
+Port and qualify the full **MeG diffusion-controller interface** and training/inference lifecycle to MLX against the frozen CUDA reference, using a cross-backend weight-interchange specification and numerical parity fixtures. Only after this later phase is complete should high-memory local macOS execute substantive Phi-2+MeG experiments. For now the wheel contains the verified bridge, not a full MeG reimplementation.
