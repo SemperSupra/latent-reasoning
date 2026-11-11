@@ -10,6 +10,8 @@ import argparse
 from datetime import date
 import hashlib
 import json
+import math
+import statistics
 from pathlib import Path
 
 START = date(2026, 11, 12)
@@ -108,6 +110,36 @@ def verify(spec: dict, science: dict, metadata: dict) -> dict:
             "paired_id_saturated": all(r["id_saturated"] is True for r in rs),
             "final_id_accuracy": {r["treatment"]: r["final_id_accuracy"] for r in rs}
         }
+    # Recompute treatment differences from independent per-seed measurements.
+    # A self-reported aggregate cannot be its own acceptance oracle.
+    deltas = {}
+    for seed in seeds:
+        rs = {r["treatment"]: r for r in results if r["seed"] == seed}
+        left = rs["latent"].get("mean_ood_accuracy")
+        right = rs["serial-control"].get("mean_ood_accuracy")
+        if left is not None and right is not None:
+            deltas[str(seed)] = left - right
+    observed_pair = row.get("paired_latent_minus_serial", {})
+    actual_map = observed_pair.get("by_seed", {})
+    if (not isinstance(actual_map, dict)
+        or set(actual_map) != set(deltas)
+        or observed_pair.get("paired_seed_count") != len(deltas)):
+        raise ValueError("independent paired OOD grid mismatch")
+    for label, value in deltas.items():
+        if not isinstance(actual_map[label], (int, float)) or not math.isclose(
+            actual_map[label], value, rel_tol=1e-10, abs_tol=1e-10
+        ):
+            raise ValueError("independent paired OOD delta mismatch")
+    observed_mean = observed_pair.get("mean")
+    recomputed_mean = statistics.mean(deltas.values()) if deltas else None
+    if (observed_mean is None) != (recomputed_mean is None):
+        raise ValueError("independent paired OOD mean presence mismatch")
+    if recomputed_mean is not None and (
+        not isinstance(observed_mean, (float, int)) or not math.isclose(
+            observed_mean, recomputed_mean, rel_tol=1e-10, abs_tol=1e-10
+        )
+    ):
+        raise ValueError("independent paired OOD mean mismatch")
     paired_valid = all(v["paired_id_saturated"] for v in per_seed.values())
     if bool(row.get("comparison_valid")) != paired_valid:
         raise ValueError("comparison validity gate inconsistent")
@@ -121,8 +153,7 @@ def verify(spec: dict, science: dict, metadata: dict) -> dict:
         "method_status": "VALID_RECEIPT",
         "claim_status": "DESCRIPTIVE_PAIRED_ONLY" if paired_valid else "HOLD_ID_UNSATURATED",
         "k": k, "seeds": seeds, "paired_seed_gates": per_seed,
-        "paired_ood_mean": row.get("paired_latent_minus_serial", {}).get("mean")
-          if paired_valid else None,
+        "paired_ood_mean": recomputed_mean if paired_valid else None,
         "claim_boundary": (
             "Public synthetic register-state stages 1-2. Matched K+1 forward "
             "calls do not establish equal FLOPs; short curriculum is not full "
