@@ -61,7 +61,7 @@ class TestKaggleLatentDirect(unittest.TestCase):
                   "status": "PASS", "metrics": {
                     "requested_accelerator": "TpuV5E8", "tpu_count": 8,
                     "jax_backend_tpu": True, "tpu_arithmetic": True,
-                    "tpu_arithmetic_checksum": 148.0,
+                    "tpu_arithmetic_checksum": 148.0, "data_parallel_devices": 8,
                     "scope": "synthetic-method-sanity-only",
                     "heldout_cosine": 0.95, "shuffled_control_cosine": 0.10}}
         self.assertEqual(module.verify_science(result, "tpu-bridge-v1")["tpu_count"], 8)
