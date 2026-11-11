@@ -1,0 +1,100 @@
+name: latent-kaggle-direct
+
+on:
+  pull_request:
+    paths:
+      - "experiments/kaggle_latent/**"
+      - "tools/kaggle_latent_direct.py"
+      - "tests/test_kaggle_latent_direct.py"
+      - "docs/kaggle-latent-direct.md"
+      - ".github/workflows/latent-kaggle-direct.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Fixed one-shot action, not an agent dispatch
+        required: true
+        type: choice
+        options: [plan, submit, observe]
+        default: plan
+      workload:
+        description: Fixed reviewed synthetic workload
+        required: true
+        type: choice
+        options: [gpu-cuda-v1, tpu-bridge-v1]
+      version:
+        description: Provider-native version (observe only)
+        required: false
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  public-contract:
+    if: github.event_name == 'pull_request' || inputs.action == 'plan'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Compile fixed source capsules
+        run: python3 -m py_compile tools/kaggle_latent_direct.py experiments/kaggle_latent/*.py
+      - name: Offline no-network contract tests
+        run: python3 -m unittest discover -s tests -p 'test_kaggle_latent_direct.py' -v
+      - name: Construct both immutable plans; never submit on PR
+        run: |
+          python3 tools/kaggle_latent_direct.py --action plan --workload gpu-cuda-v1 --out-dir /tmp/kaggle-gpu-plan
+          python3 tools/kaggle_latent_direct.py --action plan --workload tpu-bridge-v1 --out-dir /tmp/kaggle-tpu-plan
+          python3 - <<'PY'
+          import json
+          for path in ("/tmp/kaggle-gpu-plan/control-receipt.json",
+                       "/tmp/kaggle-tpu-plan/control-receipt.json"):
+              with open(path, encoding="utf-8") as stream:
+                  receipt = json.load(stream)
+              assert receipt["state"] == "PLANNED"
+              assert len(receipt["source_sha256"]) == 64
+              print(receipt["workload"], receipt["source_sha256"])
+          PY
+
+  trusted-provider:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.action != 'plan'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment: kaggle-research
+    concurrency:
+      group: latent-kaggle-direct-provider
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Offline contract and source validation
+        run: |
+          python3 -m py_compile tools/kaggle_latent_direct.py experiments/kaggle_latent/*.py
+          python3 -m unittest discover -s tests -p 'test_kaggle_latent_direct.py' -v
+      - name: Install fixed Kaggle SDK before secret access
+        run: |
+          python3 -m venv .venv-kaggle
+          .venv-kaggle/bin/python -m pip install --disable-pip-version-check kaggle==2.2.4
+      - name: Run one bounded Kaggle provider operation
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_ACTION: ${{ inputs.action }}
+          KAGGLE_WORKLOAD: ${{ inputs.workload }}
+          KAGGLE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$KAGGLE_API_TOKEN" ]]; then echo "LATENT_KAGGLE_BLOCKED=NO_KAGGLE_ENV_TOKEN"; exit 2; fi
+          .venv-kaggle/bin/python tools/kaggle_latent_direct.py \
+            --action "$KAGGLE_ACTION" --workload "$KAGGLE_WORKLOAD" \
+            --version "$KAGGLE_VERSION" --out-dir .kaggle-latent
+      - name: Upload allowlisted control receipt only
+        if: ${{ always() && hashFiles('.kaggle-latent/control-receipt.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: latent-kaggle-control-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .kaggle-latent/control-receipt.json
+          retention-days: 7
+          if-no-files-found: error
