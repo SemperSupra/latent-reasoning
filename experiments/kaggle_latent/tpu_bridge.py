@@ -4,6 +4,7 @@
 No private data, network, user input or model weights. This establishes
 hardware and an elementary trainable latent bridge, not reasoning efficacy.
 """
+from functools import partial
 import json
 import sys
 from pathlib import Path
@@ -47,16 +48,23 @@ def probe():
     x = (z @ a).astype(np.float32)
     y = (z @ b).astype(np.float32)
     shuffled = y[:ntrain][rng.permutation(ntrain)].copy()
+    # One data shard per TPU, replicated weights and averaged gradients:
+    # verifies actual eight-device *training*, not merely device enumeration.
+    shard = ntrain // len(tpus)
     with jax.default_device(tpus[0]):
-        tx, ty = jnp.asarray(x[:ntrain]), jnp.asarray(y[:ntrain])
+        tx = jnp.asarray(x[:ntrain].reshape(8, shard, width))
+        ty = jnp.asarray(y[:ntrain].reshape(8, shard, width))
+        negative = jnp.asarray(shuffled.reshape(8, shard, width))
         hx, hy = jnp.asarray(x[ntrain:]), jnp.asarray(y[ntrain:])
-        negative = jnp.asarray(shuffled)
-        @jax.jit
+        @partial(jax.pmap, axis_name="replica", devices=tpus)
         def step(w, features, targets):
-            grad = jax.grad(lambda p: jnp.mean((features @ p - targets) ** 2))(w)
-            return w - jnp.float32(0.5) * grad
-        learned = jnp.eye(width, dtype=jnp.float32)
-        control = jnp.eye(width, dtype=jnp.float32)
+            local_grad = jax.grad(
+                lambda p: jnp.mean((features @ p - targets) ** 2))(w)
+            mean_grad = jax.lax.pmean(local_grad, "replica")
+            return w - jnp.float32(0.5) * mean_grad
+        learned = jnp.broadcast_to(
+            jnp.eye(width, dtype=jnp.float32), (8, width, width))
+        control = learned
         for _ in range(160):
             learned = step(learned, tx, ty)
             control = step(control, tx, negative)
@@ -65,11 +73,11 @@ def probe():
             cosine = jnp.sum(pred * hy, axis=1) / (
                 jnp.linalg.norm(pred, axis=1) * jnp.linalg.norm(hy, axis=1) + 1e-9)
             return float(jax.device_get(jnp.mean(cosine)))
-        correct_score = score(learned)
-        shuffled_score = score(control)
+        correct_score = score(learned[0])
+        shuffled_score = score(control[0])
     metrics.update(
         seed=20261111, training_examples=ntrain, holdout_examples=ntest,
-        updates=160, heldout_cosine=round(correct_score, 6),
+        updates=160, data_parallel_devices=8, heldout_cosine=round(correct_score, 6),
         shuffled_control_cosine=round(shuffled_score, 6))
     if correct_score < 0.75 or correct_score - shuffled_score < 0.45:
         return metrics, "SYNTHETIC_BRIDGE_CONTROL_FAILED"
