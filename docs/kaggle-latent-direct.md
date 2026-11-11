@@ -21,11 +21,11 @@ Requests NvidiaTeslaT4. Requires actual two CUDA T4s and verifies on-device nume
 
 ## Workload TPU: tpu-bridge-v1
 
-Requests TpuV5E8. Requires JAX backend TPU, exactly eight visible TPU devices, explicit pmap arithmetic across the eight and a small fixed-seed synthetic representation-mapping training experiment with a shuffled-target control. Training is initially on one chip, not yet distributed across all eight. Passing is a hardware + synthetic method sanity result, NOT a latent reasoning or cross-model capability claim.
+Requests TpuV5E8. Requires JAX backend TPU, exactly eight visible TPU devices, explicit pmap arithmetic across the eight and a small fixed-seed synthetic representation-mapping training experiment with a shuffled-target control. Bridge training uses replicated weights and eight JAX data shards with pmean gradient synchronization across all eight chips. Passing is a hardware + synthetic method sanity result, NOT a latent reasoning or cross-model capability claim.
 
 ## Follow-on TPU RDTE after observed hardware PASS
 
-- Eight-way JAX data-parallel training, compare compile warmup and steady-state timings, XLA sharding, gradient accumulation, batch scaling and memory use.
+- Eight-way JAX data-parallel *scaling*, compare compile warmup and steady-state timings, XLA sharding, gradient accumulation, batch scaling and memory use.
 - Recurrent K=0,1,2,4,8 and adaptive-depth sweeps against matched serial compute; per-task/seed OOD tests and causal interventions.
 - Adapter/codec comparisons: no intervention, random projection, learned linear projection, nonlinear bridge and independent held-out evaluator.
 - Coconut reference stage-0 and CODI only after their separate reproduction and licensing gates; CUDA PyTorch scripts are not assumed TPU-compatible without verified JAX or Torch-XLA ports.
