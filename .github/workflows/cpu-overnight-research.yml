@@ -1,0 +1,117 @@
+name: cpu-overnight-research
+on:
+  pull_request:
+    paths:
+      - "tools/overnight_cpu_campaign.py"
+      - "tests/test_overnight_cpu_campaign.py"
+      - ".github/workflows/cpu-overnight-research.yml"
+      - "docs/overnight-cpu-campaign.md"
+  schedule:
+    - cron: "37 2 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Offline preflight or one bounded CPU replay
+        type: choice
+        required: true
+        default: plan
+        options: [plan, run]
+
+permissions:
+  contents: read
+concurrency:
+  group: latent-cpu-overnight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  public-preflight:
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.action == 'plan')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Offline compiler and protocol tests
+        run: |
+          python3 -m py_compile tools/overnight_cpu_campaign.py tests/test_overnight_cpu_campaign.py
+          python3 -m unittest discover -s tests -p 'test_overnight_cpu_campaign.py' -v
+      - name: Generate bounded first/last plans
+        run: |
+          python3 tools/overnight_cpu_campaign.py plan --date 2026-11-12 --output /tmp/first.json
+          python3 tools/overnight_cpu_campaign.py plan --date 2026-12-05 --output /tmp/last.json
+          python3 tools/overnight_cpu_campaign.py plan --date 2026-12-06 --output /tmp/out-of-window.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('/tmp/first.json').read_text())
+          b=json.loads(Path('/tmp/last.json').read_text())
+          assert a['arguments']['ks']=='1'
+          assert b['arguments']['ks']=='4'
+          assert a['resource_class']==b['resource_class']=='cpu'
+          assert not Path('/tmp/out-of-window.json').exists()
+          print("OFFLINE_CAMPAIGN_GATE=PASS")
+          PY
+
+  nightly-replay:
+    if: (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.action == 'run')) && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Resolve one preregistered date slot
+        id: slot
+        run: |
+          set -euo pipefail
+          DATE_UTC="$(date -u +%Y-%m-%d)"
+          python3 tools/overnight_cpu_campaign.py plan \
+            --date "$DATE_UTC" --output "$RUNNER_TEMP/overnight-spec.json"
+          if test -s "$RUNNER_TEMP/overnight-spec.json"; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "active=false" >> "$GITHUB_OUTPUT"
+            echo "CPU campaign window closed; no experiment."
+          fi
+      - name: Run offline negative controls
+        if: steps.slot.outputs.active == 'true'
+        run: python3 -m unittest discover -s tests -p 'test_overnight_cpu_campaign.py' -v
+      - name: Install pinned CPU-only experiment dependencies
+        if: steps.slot.outputs.active == 'true'
+        run: |
+          python3 -m venv .venv-replay
+          .venv-replay/bin/python -m pip install --disable-pip-version-check \
+            -r requirements-experiment-cpu.txt
+      - name: Execute registered paired seed and depth
+        if: steps.slot.outputs.active == 'true'
+        run: |
+          .venv-replay/bin/python tools/run_replay.py \
+            "$RUNNER_TEMP/overnight-spec.json" \
+            --output "$RUNNER_TEMP/overnight-scientific.json" \
+            --metadata "$RUNNER_TEMP/overnight-metadata.json"
+      - name: Verify independent scientific acceptance gate
+        if: steps.slot.outputs.active == 'true'
+        run: |
+          .venv-replay/bin/python tools/overnight_cpu_campaign.py verify \
+            --spec "$RUNNER_TEMP/overnight-spec.json" \
+            --scientific "$RUNNER_TEMP/overnight-scientific.json" \
+            --metadata "$RUNNER_TEMP/overnight-metadata.json" \
+            --assessment "$RUNNER_TEMP/overnight-assessment.json"
+          cat "$RUNNER_TEMP/overnight-assessment.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve receipts even after failed verification
+        if: ${{ always() && steps.slot.outputs.active == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: latent-cpu-overnight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/overnight-spec.json
+            ${{ runner.temp }}/overnight-scientific.json
+            ${{ runner.temp }}/overnight-metadata.json
+            ${{ runner.temp }}/overnight-assessment.json
+          retention-days: 30
+          if-no-files-found: warn
