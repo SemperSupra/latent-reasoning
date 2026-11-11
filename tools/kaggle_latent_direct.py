@@ -82,7 +82,7 @@ def quota(api, p: dict) -> int:
     return int(remaining)
 
 def ensure_not_existing_or_active(api, target: str) -> None:
-    # Kaggle jobs outlive GHA jobs. Account-wide active check prevents overlap.
+    # Kaggle jobs outlive GHA jobs; check known experiment namespaces.
     token = None
     seen = set()
     for _ in range(20):
@@ -166,6 +166,7 @@ def verify_science(result: dict, workload: str) -> dict:
         or m.get("tpu_count") != 8 or m.get("jax_backend_tpu") is not True
         or m.get("tpu_arithmetic") is not True
         or m.get("tpu_arithmetic_checksum") != 148.0
+        or m.get("data_parallel_devices") != 8
         or m.get("scope") != "synthetic-method-sanity-only"):
         raise Denied("TPU_HARDWARE_ORACLE_FAILED")
     score, control = m.get("heldout_cosine"), m.get("shuffled_control_cosine")
