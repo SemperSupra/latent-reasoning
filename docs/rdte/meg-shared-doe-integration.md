@@ -2,7 +2,7 @@
 
 **Status:** design/contract reconciliation only; this document is not a scientific result, a new scheduler, or an authorization to launch Kaggle jobs.
 
-**Private scientific worksets:** [MeG Phi-2 reference reconstruction #5](https://github.com/SemperSupra/latent-reasoning-private/issues/5), [MeG MLX engineering #6](https://github.com/SemperSupra/latent-reasoning-private/issues/6), [Latent Reasoning Campaign 0001 #2](https://github.com/SemperSupra/latent-reasoning-private/issues/2).
+**Private scientific worksets:** [MeG Phi-2 reference reconstruction #5](https://github.com/SemperSupra/latent-reasoning-private/issues/5), [MeG MLX engineering #6](https://github.com/SemperSupra/latent-reasoning-private/issues/6), [Latent Reasoning Campaign 0001 #2](https://github.com/SemperSupra/latent-reasoning-private/issues/2), [MeG knowledge/Dory DOE #7](https://github.com/SemperSupra/latent-reasoning-private/issues/7).
 
 **Rationale:** one experiment/replay/evidence substrate across related research work, independent hypotheses and promotions. Do not create a second generic DOE framework or scheduler. Keep MeG's original CUDA reproduction distinct from MLX build qualification and future Dory interventions.
 
