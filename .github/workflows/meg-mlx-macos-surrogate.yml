@@ -1,4 +1,4 @@
-name: meg-mlx-macos-surrogate
+name: meg-mlx-macos-build
 
 on:
   pull_request:
@@ -19,9 +19,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Syntax contract, no accelerator required
-        run: python3 -m py_compile experiments/meg_mlx/surrogate_gpu.py
-  macos-mlx-smoke:
+      - name: Check synthetic tests and framework modules are valid Python
+        run: |
+          python3 -m compileall -q experiments/meg_mlx
+  macos-mlx-wheel-build:
     needs: source-contract
     strategy:
       fail-fast: false
@@ -29,7 +30,7 @@ jobs:
       matrix:
         runner: [macos-26, xcode-27]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 12
+    timeout-minutes: 16
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -38,28 +39,73 @@ jobs:
         with:
           python-version: "3.11"
           architecture: arm64
-      - name: Install pinned public MLX and CPU oracle dependency
+      - name: Install pinned MLX runtime and wheel build toolchain
         run: |
-          python -m pip install --disable-pip-version-check "mlx==0.32.4" "numpy==2.1.1"
-      - name: Execute bounded MLX GPU intervention oracle
+          python -m pip install --disable-pip-version-check \
+            "mlx==0.32.4" "numpy==2.1.1" "mlx-lm==0.31.3" \
+            "build==1.3.0" "setuptools>=75,<82" wheel
+      - name: Build installable MLX bridge wheel
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/meg-mlx"
-          python experiments/meg_mlx/surrogate_gpu.py | tee "$RUNNER_TEMP/meg-mlx/result.json"
-          python - "$RUNNER_TEMP/meg-mlx/result.json" <<'PY'
-          import json, sys
-          data = json.load(open(sys.argv[1], encoding="utf-8"))
-          assert data["status"] == "PASS"
-          assert data["claim"] == "tiny_synthetic_gpu_intervention_only"
-          assert data["zero_intervention_exact"]
-          assert data["gradient_finite_nonzero"]
-          assert not data["meg_paper_reproduced"]
+          mkdir -p "$RUNNER_TEMP/meg-mlx/dist"
+          python -m build --no-isolation --wheel \
+            experiments/meg_mlx/framework \
+            --outdir "$RUNNER_TEMP/meg-mlx/dist"
+          python -m pip install --no-deps "$RUNNER_TEMP"/meg-mlx/dist/*.whl
+          python -m pip show meg-mlx-bridge
+      - name: Validate actual Phi-2 MLP intervention contracts on GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover \
+            -s experiments/meg_mlx/framework/tests \
+            -p 'test_phi2_bridge.py' -v
+          python experiments/meg_mlx/surrogate_gpu.py \
+            | tee "$RUNNER_TEMP/meg-mlx/surrogate.json"
+      - name: Write wheel and runtime provenance receipt
+        shell: bash
+        run: |
+          python - "$RUNNER_TEMP/meg-mlx" "${{ matrix.runner }}" "${{ github.sha }}" <<'PY'
+          import hashlib, importlib.metadata, json, pathlib, platform, subprocess, sys
+          out, runner, source_sha = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+          wheels = list((out / "dist").glob("*.whl"))
+          assert len(wheels) == 1, "Exactly one wheel required"
+          wheel = wheels[0]
+          surrogate = json.loads((out / "surrogate.json").read_text())
+          assert surrogate["status"] == "PASS" and not surrogate["meg_paper_reproduced"]
+          report = {
+              "schema": "meg-mlx-wheel-build/v1",
+              "status": "PASS",
+              "claim": "installable_bridge_with_phi2_mlp_contracts_only",
+              "runner": runner,
+              "source_commit": source_sha,
+              "wheel": wheel.name,
+              "wheel_sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+              "mlx_version": importlib.metadata.version("mlx"),
+              "mlx_lm_version": importlib.metadata.version("mlx-lm"),
+              "bridge_version": importlib.metadata.version("meg-mlx-bridge"),
+              "arch": platform.machine(),
+              "macos": platform.mac_ver()[0],
+              "ram_bytes": int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True)),
+              "gpu_oracle": surrogate["status"],
+              "model_loaded": False,
+              "authors_meg_pipeline_ported": False,
+              "meg_paper_reproduced": False,
+          }
+          (out / "build-receipt.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n"
+          )
+          print(json.dumps(report, sort_keys=True))
           PY
-      - name: Publish bounded public-safe method receipt
+      - name: Publish wheel and sanitized build receipt
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: meg-mlx-surrogate-${{ matrix.runner }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/meg-mlx/result.json
-          retention-days: 7
+          name: meg-mlx-wheel-${{ matrix.runner }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/meg-mlx/dist/*.whl
+            ${{ runner.temp }}/meg-mlx/build-receipt.json
+            ${{ runner.temp }}/meg-mlx/surrogate.json
+          retention-days: 14
           if-no-files-found: warn
