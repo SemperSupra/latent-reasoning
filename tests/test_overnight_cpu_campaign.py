@@ -42,13 +42,16 @@ class OvernightCampaignTests(unittest.TestCase):
                     "treatment": t,"seed": s,"recurrent_steps": 1,
                     "forward_calls_per_batch": 2,
                     "id_saturated": saturate,"final_id_accuracy": 1.0 if saturate else .75,
-                    "mean_ood_accuracy": .5 if saturate else None})
+                    "mean_ood_accuracy": (.53 if t == "latent" else .5) if saturate else None})
         science={"schema_version":1, "evidence_class":"recurrent-depth-sweep",
                  "family":"register-state-mini-v1",
                  "treatments":["serial-control","latent"],
                  "settings":{"ks":[1],"seeds":seeds,"stages":[1,2]},
                  "sweep":[{"k":1,"comparison_valid":saturate,
-                           "results":records,"paired_latent_minus_serial":{"mean":.03}}],
+                           "results":records,"paired_latent_minus_serial":{
+                               "mean":.03 if saturate else None,
+                               "paired_seed_count":2 if saturate else 0,
+                               "by_seed":{"8":.03,"9":.03} if saturate else {}}}],
                  "valid_ks":[1] if saturate else []}
         meta={"replay_spec_id":p["id"],"replay_spec_sha256":digest(p),
               "scientific_receipt_sha256":digest(science), "resource_class":"cpu",
@@ -86,6 +89,13 @@ class OvernightCampaignTests(unittest.TestCase):
         p,s,m=self.fixture()
         s["treatments"]=["latent"]
         with self.assertRaisesRegex(ValueError,"provenance"):
+            verify(p,s,m)
+
+    def test_forged_paired_ood_mean_rejected(self):
+        p,s,m=self.fixture()
+        s["sweep"][0]["paired_latent_minus_serial"]["mean"]=0.9
+        m["scientific_receipt_sha256"]=digest(s)
+        with self.assertRaisesRegex(ValueError,"independent paired OOD mean"):
             verify(p,s,m)
 
     def test_forged_source_spec_rejected(self):
