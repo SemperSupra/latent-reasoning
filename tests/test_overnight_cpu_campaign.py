@@ -42,20 +42,31 @@ class OvernightCampaignTests(unittest.TestCase):
                     "treatment": t,"seed": s,"recurrent_steps": 1,
                     "forward_calls_per_batch": 2,
                     "id_saturated": saturate,"final_id_accuracy": 1.0 if saturate else .75,
+                    "stage_epochs": [15, 30] if saturate else [150],
+                    "ood_accuracy_by_steps": (
+                        {"3": .53 if t == "latent" else .5,
+                         "4": .53 if t == "latent" else .5} if saturate else None),
                     "mean_ood_accuracy": (.53 if t == "latent" else .5) if saturate else None})
         science={"schema_version":1, "evidence_class":"recurrent-depth-sweep",
                  "family":"register-state-mini-v1",
                  "treatments":["serial-control","latent"],
-                 "settings":{"ks":[1],"seeds":seeds,"stages":[1,2]},
+                 "settings":{"ks":[1],"seeds":seeds,"stages":[1,2],
+                             "learning_rate":0.001,"ood_min_steps":3,
+                             "ood_max_steps":4,"ood_per_steps":128,
+                             "d_model":64,"layers":2,"heads":4},
                  "sweep":[{"k":1,"comparison_valid":saturate,
                            "results":records,"paired_latent_minus_serial":{
                                "mean":.03 if saturate else None,
                                "paired_seed_count":2 if saturate else 0,
                                "by_seed":{"8":.03,"9":.03} if saturate else {}}}],
                  "valid_ks":[1] if saturate else []}
+        head="0123456789abcdef"*2+"01234567"
         meta={"replay_spec_id":p["id"],"replay_spec_sha256":digest(p),
               "scientific_receipt_sha256":digest(science), "resource_class":"cpu",
-              "source_revision":"0123456789abcdef"}
+              "source_revision":head,"git_head":head,
+              "module":p["module"],"arguments":p["arguments"],
+              "environment_ref":p["environment_ref"],
+              "execution":{"github_actions":True,"runner_os":"Linux","runner_arch":"X64"}}
         return p, science, meta
 
     def test_valid_but_descriptive_only(self):
@@ -103,6 +114,43 @@ class OvernightCampaignTests(unittest.TestCase):
         p["arguments"]["max_epochs_per_stage"]=200
         m["replay_spec_sha256"]=digest(p)
         with self.assertRaisesRegex(ValueError,"unregistered"):
+            verify(p,s,m)
+
+    def test_wrong_runner_or_source_rejected(self):
+        p,s,m=self.fixture()
+        m["git_head"]="f"*40
+        with self.assertRaisesRegex(ValueError,"attestation"):
+            verify(p,s,m)
+        p,s,m=self.fixture()
+        m["execution"]["github_actions"]=False
+        with self.assertRaisesRegex(ValueError,"attestation"):
+            verify(p,s,m)
+
+    def test_mismatched_metadata_method_rejected(self):
+        p,s,m=self.fixture()
+        m["arguments"]["ks"]="8"
+        with self.assertRaisesRegex(ValueError,"replay provenance"):
+            verify(p,s,m)
+
+    def test_forged_ood_measurements_rejected(self):
+        p,s,m=self.fixture()
+        s["sweep"][0]["results"][0]["ood_accuracy_by_steps"]["3"]=0.2
+        m["scientific_receipt_sha256"]=digest(s)
+        with self.assertRaisesRegex(ValueError,"OOD measurement"):
+            verify(p,s,m)
+
+    def test_false_id_saturation_flag_rejected(self):
+        p,s,m=self.fixture()
+        s["sweep"][0]["results"][0]["final_id_accuracy"]=.9
+        m["scientific_receipt_sha256"]=digest(s)
+        with self.assertRaisesRegex(ValueError,"inconsistent ID saturation"):
+            verify(p,s,m)
+
+    def test_out_of_bounds_training_rejected(self):
+        p,s,m=self.fixture()
+        s["sweep"][0]["results"][0]["stage_epochs"]=[151]
+        m["scientific_receipt_sha256"]=digest(s)
+        with self.assertRaisesRegex(ValueError,"training epoch"):
             verify(p,s,m)
 
     def test_inconsistent_gate_rejected(self):
