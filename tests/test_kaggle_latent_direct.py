@@ -111,6 +111,62 @@ class TestKaggleLatentDirect(unittest.TestCase):
             module.ensure_not_existing_or_active(
                 Fake(), "user/latent-c001-gpu-cuda-v1")
 
+    def test_unrelated_active_kaggle_account_job_blocks(self):
+        from types import SimpleNamespace
+        for other in ("user/colab-bridge", "user/semper-shared",
+                      "user/manual-kaggle-notebook"):
+            with self.subTest(other=other):
+                class Fake:
+                    def kernels_list_with_response(self, **kwargs):
+                        return SimpleNamespace(
+                            kernels=[SimpleNamespace(ref=other)],
+                            next_page_token=None)
+                    def kernels_status(self, ref):
+                        return SimpleNamespace(status="QUEUED")
+                with self.assertRaisesRegex(module.Denied, "ACCOUNT_JOB_ACTIVE"):
+                    module.ensure_not_existing_or_active(
+                        Fake(), "user/latent-c001-tpu-bridge-v1")
+
+    def test_unrelated_unknown_status_is_not_available(self):
+        from types import SimpleNamespace
+        class Fake:
+            def kernels_list_with_response(self, **kwargs):
+                return SimpleNamespace(
+                    kernels=[SimpleNamespace(ref="user/manual-notebook")],
+                    next_page_token=None)
+            def kernels_status(self, ref):
+                return SimpleNamespace(status="UNRECOGNIZED")
+        with self.assertRaisesRegex(module.Denied, "ACCOUNT_JOB_UNKNOWN"):
+            module.ensure_not_existing_or_active(
+                Fake(), "user/latent-c001-gpu-cuda-v1")
+
+    def test_unrelated_completed_job_is_permitted(self):
+        from types import SimpleNamespace
+        class Fake:
+            def kernels_list_with_response(self, **kwargs):
+                return SimpleNamespace(
+                    kernels=[SimpleNamespace(ref="user/manual-notebook")],
+                    next_page_token=None)
+            def kernels_status(self, ref):
+                return SimpleNamespace(status="COMPLETE")
+        self.assertIsNone(module.ensure_not_existing_or_active(
+            Fake(), "user/latent-c001-gpu-cuda-v1"))
+
+    def test_nonfinite_and_boolean_tpu_oracles_are_refused(self):
+        receipt={"schema":module.RESULT_SCHEMA,"workload":"tpu-bridge-v1",
+                 "status":"PASS",
+                 "metrics":{"requested_accelerator":"TpuV5E8",
+                            "tpu_count":8,"jax_backend_tpu":True,
+                            "tpu_arithmetic":True,"tpu_arithmetic_checksum":148.0,
+                            "data_parallel_devices":8,
+                            "scope":"synthetic-method-sanity-only",
+                            "heldout_cosine":0.95,"shuffled_control_cosine":0.1}}
+        for bad in (float("nan"),float("inf"),True,False,-1.2,1.2):
+            with self.subTest(bad=str(bad)):
+                receipt["metrics"]["heldout_cosine"]=bad
+                with self.assertRaisesRegex(module.Denied,"TPU_BRIDGE_ORACLE_FAILED"):
+                    module.verify_science(receipt,"tpu-bridge-v1")
+
     def test_credentialless_submit_is_blocked_before_importing_kaggle(self):
         import json
         import os
