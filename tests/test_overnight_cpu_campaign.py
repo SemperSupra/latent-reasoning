@@ -128,6 +128,7 @@ class OvernightCampaignTests(unittest.TestCase):
 
     def test_mismatched_metadata_method_rejected(self):
         p,s,m=self.fixture()
+        m["arguments"]=dict(m["arguments"])
         m["arguments"]["ks"]="8"
         with self.assertRaisesRegex(ValueError,"replay provenance"):
             verify(p,s,m)
