@@ -1,0 +1,195 @@
+name: cpu-overnight-research
+on:
+  pull_request:
+    paths:
+      - "tools/overnight_cpu_campaign.py"
+      - "tests/test_overnight_cpu_campaign.py"
+      - ".github/workflows/cpu-overnight-research.yml"
+      - "docs/overnight-cpu-campaign.md"
+  schedule:
+    - cron: "37 2 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Offline preflight or one bounded CPU replay
+        type: choice
+        required: true
+        default: plan
+        options: [plan, run]
+
+permissions:
+  contents: read
+concurrency:
+  group: latent-cpu-overnight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  public-preflight:
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.action == 'plan')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Offline compiler and protocol tests
+        run: |
+          python3 -m py_compile tools/overnight_cpu_campaign.py tests/test_overnight_cpu_campaign.py
+          python3 -m unittest discover -s tests -p 'test_overnight_cpu_campaign.py' -v
+      - name: Generate bounded first/last plans
+        run: |
+          python3 tools/overnight_cpu_campaign.py plan --date 2026-11-12 --output /tmp/first.json
+          python3 tools/overnight_cpu_campaign.py plan --date 2026-12-05 --output /tmp/last.json
+          python3 tools/overnight_cpu_campaign.py plan --date 2026-12-06 --output /tmp/out-of-window.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('/tmp/first.json').read_text())
+          b=json.loads(Path('/tmp/last.json').read_text())
+          assert a['arguments']['ks']=='1'
+          assert b['arguments']['ks']=='4'
+          assert a['resource_class']==b['resource_class']=='cpu'
+          assert not Path('/tmp/out-of-window.json').exists()
+          print("OFFLINE_CAMPAIGN_GATE=PASS")
+          PY
+
+  nightly-replay:
+    if: (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.action == 'run')) && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Resolve one preregistered date slot
+        id: slot
+        run: |
+          set -euo pipefail
+          DATE_UTC="$(date -u +%Y-%m-%d)"
+          python3 tools/overnight_cpu_campaign.py plan \
+            --date "$DATE_UTC" --output "$RUNNER_TEMP/overnight-spec.json"
+          if test -s "$RUNNER_TEMP/overnight-spec.json"; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "active=false" >> "$GITHUB_OUTPUT"
+            echo "CPU campaign window closed; no experiment."
+          fi
+      - name: Run offline negative controls
+        if: steps.slot.outputs.active == 'true'
+        run: python3 -m unittest discover -s tests -p 'test_overnight_cpu_campaign.py' -v
+      - name: Install pinned CPU-only experiment dependencies
+        if: steps.slot.outputs.active == 'true'
+        run: |
+          python3 -m venv .venv-replay
+          .venv-replay/bin/python -m pip install --disable-pip-version-check \
+            -r requirements-experiment-cpu.txt
+      - name: Execute registered paired seed and depth
+        if: steps.slot.outputs.active == 'true'
+        run: |
+          .venv-replay/bin/python tools/run_replay.py \
+            "$RUNNER_TEMP/overnight-spec.json" \
+            --output "$RUNNER_TEMP/overnight-scientific.json" \
+            --metadata "$RUNNER_TEMP/overnight-metadata.json"
+      - name: Verify independent scientific acceptance gate
+        if: steps.slot.outputs.active == 'true'
+        run: |
+          .venv-replay/bin/python tools/overnight_cpu_campaign.py verify \
+            --spec "$RUNNER_TEMP/overnight-spec.json" \
+            --scientific "$RUNNER_TEMP/overnight-scientific.json" \
+            --metadata "$RUNNER_TEMP/overnight-metadata.json" \
+            --assessment "$RUNNER_TEMP/overnight-assessment.json"
+          cat "$RUNNER_TEMP/overnight-assessment.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve receipts even after failed verification
+        if: ${{ always() && steps.slot.outputs.active == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: latent-cpu-overnight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/overnight-spec.json
+            ${{ runner.temp }}/overnight-scientific.json
+            ${{ runner.temp }}/overnight-metadata.json
+            ${{ runner.temp }}/overnight-assessment.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  cpu-integration-smoke:
+    # Real disposable CPU replay; one-epoch mechanism test only, not admitted science.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Confirm Python version and install CPU-only Torch
+        run: |
+          python3 -c 'import sys; assert sys.version_info[:2] == (3, 12)'
+          python3 -m venv /tmp/overnight-smoke-env
+          /tmp/overnight-smoke-env/bin/python -m pip install --disable-pip-version-check \
+            -r requirements-experiment-cpu.txt
+      - name: Generate bounded non-science smoke replay
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          spec={
+            "schema_version":1,
+            "id":"campaign-0001/ci-nonscience-cpu-replay-smoke",
+            "resource_class":"cpu",
+            "environment_ref":"environments/python312-torch251-cpu.json",
+            "module":"experiments.register_state_k_sweep",
+            "arguments":{
+              "ks":"1","seeds":"101","stages":"1,2",
+              "max_epochs_per_stage":1,"learning_rate":0.001,
+              "batch_size":256,"ood_min_steps":3,
+              "ood_max_steps":4,"ood_per_steps":16,"threads":2
+            },
+            "timeout_seconds":180
+          }
+          Path("/tmp/overnight-smoke-spec.json").write_text(
+              json.dumps(spec,sort_keys=True)+"\n")
+          PY
+      - name: Run actual runner-neutral experiment and retain metadata
+        run: |
+          /tmp/overnight-smoke-env/bin/python tools/run_replay.py \
+            /tmp/overnight-smoke-spec.json \
+            --output /tmp/overnight-smoke-science.json \
+            --metadata /tmp/overnight-smoke-metadata.json
+      - name: Verify provider-independent replay chain only
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,subprocess
+          from pathlib import Path
+          science=json.loads(Path("/tmp/overnight-smoke-science.json").read_text())
+          meta=json.loads(Path("/tmp/overnight-smoke-metadata.json").read_text())
+          spec=json.loads(Path("/tmp/overnight-smoke-spec.json").read_text())
+          digest=lambda x: hashlib.sha256(json.dumps(x,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+          assert meta["replay_spec_sha256"]==digest(spec)
+          assert meta["scientific_receipt_sha256"]==digest(science)
+          assert meta["git_head"]==subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
+          assert meta["execution"]["github_actions"] is True
+          assert meta["resource_class"]=="cpu"
+          assert science["evidence_class"]=="recurrent-depth-sweep"
+          assert len(science["sweep"])==1 and science["sweep"][0]["k"]==1
+          assert {(x["seed"],x["treatment"]) for x in science["sweep"][0]["results"]} == {(101,"serial-control"),(101,"latent")}
+          assert all(1<=e<=1 for row in science["sweep"][0]["results"] for e in row["stage_epochs"])
+          print("CPU_REPLAY_PIPELINE_SMOKE=PASS_NOT_SCIENTIFIC_EVIDENCE")
+          PY
+      - name: Upload source-pinned non-scientific CI receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-integration-smoke-${{ github.run_id }}
+          path: |
+            /tmp/overnight-smoke-spec.json
+            /tmp/overnight-smoke-science.json
+            /tmp/overnight-smoke-metadata.json
+          retention-days: 7
+          if-no-files-found: warn
