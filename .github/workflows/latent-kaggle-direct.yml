@@ -47,7 +47,7 @@ jobs:
       - name: Pin Kaggle SDK and verify its imported interface without credentials
         run: |
           python3 -m venv /tmp/kaggle-sdk-surface
-          /tmp/kaggle-sdk-surface/bin/python -m pip install --disable-pip-version-check kaggle==2.2.4
+          /tmp/kaggle-sdk-surface/bin/python -m pip install --disable-pip-version-check kaggle==2.2.4 six==1.17.0
           /tmp/kaggle-sdk-surface/bin/python -m unittest discover -s tests -p 'test_kaggle_sdk_surface.py' -v
       - name: Construct both immutable plans; never submit on PR
         run: |
@@ -83,7 +83,7 @@ jobs:
       - name: Install fixed Kaggle SDK before secret access
         run: |
           python3 -m venv .venv-kaggle
-          .venv-kaggle/bin/python -m pip install --disable-pip-version-check kaggle==2.2.4
+          .venv-kaggle/bin/python -m pip install --disable-pip-version-check kaggle==2.2.4 six==1.17.0
       - name: Run one bounded Kaggle provider operation
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
