@@ -71,8 +71,21 @@ def verify(spec: dict, science: dict, metadata: dict) -> dict:
     if (metadata.get("replay_spec_id") != spec["id"]
         or metadata.get("replay_spec_sha256") != digest(spec)
         or metadata.get("scientific_receipt_sha256") != digest(science)
-        or metadata.get("resource_class") != "cpu"):
+        or metadata.get("resource_class") != "cpu"
+        or metadata.get("module") != MODULE
+        or metadata.get("arguments") != spec["arguments"]
+        or metadata.get("environment_ref") != ENVIRONMENT):
         raise ValueError("replay provenance mismatch")
+    # A receipt hash alone is not sufficient: verify exact source identity and
+    # that the observation came from the designated public Actions CPU runner.
+    source = metadata.get("source_revision")
+    if (not isinstance(source, str) or len(source) != 40
+        or any(ch not in "0123456789abcdef" for ch in source)
+        or metadata.get("git_head") != source
+        or metadata.get("execution", {}).get("github_actions") is not True
+        or metadata.get("execution", {}).get("runner_os") != "Linux"
+        or metadata.get("execution", {}).get("runner_arch") != "X64"):
+        raise ValueError("replay source or runner attestation mismatch")
     a = spec["arguments"]
     k = int(a["ks"])
     seeds = [int(x) for x in a["seeds"].split(",")]
@@ -83,7 +96,13 @@ def verify(spec: dict, science: dict, metadata: dict) -> dict:
         raise ValueError("unknown scientific receipt")
     settings = science.get("settings", {})
     if (settings.get("ks") != [k] or settings.get("seeds") != seeds
-        or settings.get("stages") != [1, 2]):
+        or settings.get("stages") != [1, 2]
+        or settings.get("learning_rate") != a["learning_rate"]
+        or settings.get("ood_min_steps") != a["ood_min_steps"]
+        or settings.get("ood_max_steps") != a["ood_max_steps"]
+        or settings.get("ood_per_steps") != a["ood_per_steps"]
+        or (settings.get("d_model"), settings.get("layers"), settings.get("heads"))
+           != (64, 2, 4)):
         raise ValueError("scientific treatment mismatch")
     sweep = science.get("sweep")
     if not isinstance(sweep, list) or len(sweep) != 1 or sweep[0].get("k") != k:
@@ -104,8 +123,25 @@ def verify(spec: dict, science: dict, metadata: dict) -> dict:
                 raise ValueError("forward-call control failed")
             saturated = (r.get("id_saturated") is True
                          and r.get("final_id_accuracy") == 1.0)
-            if not saturated and r.get("mean_ood_accuracy") is not None:
-                raise ValueError("OOD leaked for unsaturated ID case")
+            if r.get("id_saturated") is True and r.get("final_id_accuracy") != 1.0:
+                raise ValueError("inconsistent ID saturation")
+            epochs = r.get("stage_epochs")
+            if (not isinstance(epochs, list) or not 1 <= len(epochs) <= 2
+                or any(type(e) is not int or not 1 <= e <= 150 for e in epochs)):
+                raise ValueError("training epoch bounds invalid")
+            ood = r.get("ood_accuracy_by_steps")
+            mean = r.get("mean_ood_accuracy")
+            if not saturated:
+                if mean is not None or ood is not None:
+                    raise ValueError("OOD leaked for unsaturated ID case")
+            else:
+                if (not isinstance(ood, dict) or set(ood) != {"3", "4"}
+                    or any(type(v) not in (int, float) or not math.isfinite(v)
+                           or not 0 <= v <= 1 for v in ood.values())
+                    or type(mean) not in (int, float) or not math.isfinite(mean)
+                    or not math.isclose(mean, statistics.mean(ood.values()),
+                                        rel_tol=1e-10, abs_tol=1e-10)):
+                    raise ValueError("OOD measurement grid invalid")
         per_seed[str(seed)] = {
             "paired_id_saturated": all(r["id_saturated"] is True for r in rs),
             "final_id_accuracy": {r["treatment"]: r["final_id_accuracy"] for r in rs}
