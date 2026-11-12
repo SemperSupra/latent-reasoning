@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -82,7 +83,7 @@ def quota(api, p: dict) -> int:
     return int(remaining)
 
 def ensure_not_existing_or_active(api, target: str) -> None:
-    # Kaggle jobs outlive GHA jobs; check known experiment namespaces.
+    # Kaggle quota is shared account-wide; check EVERY running notebook, not\n    # just known Latent/Agent Dispatch or shared library namespaces.
     token = None
     seen = set()
     for _ in range(20):
@@ -98,13 +99,12 @@ def ensure_not_existing_or_active(api, target: str) -> None:
                 raise Denied("KAGGLE_LIST_UNTRUSTED")
             if ref.lower() == target.lower():
                 raise Denied("TARGET_EXISTS_OBSERVE_INSTEAD")
-            if ref.split("/", 1)[1].startswith(("latent-c001-", "ad-rdte-")):
-                status = str(getattr(api.kernels_status(ref), "status", "UNKNOWN")).upper()
-                if any(k in status for k in ("QUEUED", "RUNNING", "PENDING", "STARTING")):
-                    raise Denied("EXISTING_KAGGLE_EXPERIMENT_ACTIVE")
-                if not any(k in status for k in
-                           ("COMPLETE", "SUCCESS", "ERROR", "FAIL", "CANCEL")):
-                    raise Denied("EXISTING_KAGGLE_EXPERIMENT_UNKNOWN")
+            status = str(getattr(api.kernels_status(ref), "status", "UNKNOWN")).upper()
+            if any(k in status for k in ("QUEUED", "RUNNING", "PENDING", "STARTING")):
+                raise Denied("EXISTING_KAGGLE_ACCOUNT_JOB_ACTIVE")
+            if not any(k in status for k in
+                       ("COMPLETE", "SUCCESS", "ERROR", "FAIL", "CANCEL")):
+                raise Denied("EXISTING_KAGGLE_ACCOUNT_JOB_UNKNOWN")
         token = getattr(page, "next_page_token", None)
         if not token:
             return
@@ -125,6 +125,8 @@ def submit(api, p: dict) -> dict:
         if sha256(data) != p["source_sha256"]:
             raise Denied("SOURCE_HASH_CHANGED")
         (folder / "run.py").write_bytes(data)
+        if sha256((folder / "run.py").read_bytes()) != p["source_sha256"]:
+            raise Denied("STAGED_SOURCE_HASH_CHANGED")
         (folder / "kernel-metadata.json").write_text(
             json.dumps(metadata(ref, p), sort_keys=True) + "\n", encoding="utf-8")
         native = api.kernels_push(str(folder), timeout=str(p["limit_seconds"]),
@@ -170,7 +172,9 @@ def verify_science(result: dict, workload: str) -> dict:
         or m.get("scope") != "synthetic-method-sanity-only"):
         raise Denied("TPU_HARDWARE_ORACLE_FAILED")
     score, control = m.get("heldout_cosine"), m.get("shuffled_control_cosine")
-    if (not isinstance(score, (int, float)) or not isinstance(control, (int, float))
+    if (type(score) not in (int, float) or type(control) not in (int, float)
+        or not (math.isfinite(score) and math.isfinite(control))
+        or not (-1 <= score <= 1 and -1 <= control <= 1)
         or not (score >= 0.75 and score - control >= 0.45)):
         raise Denied("TPU_BRIDGE_ORACLE_FAILED")
     return {"tpu_count": 8, "tpu_arithmetic_checksum": 148.0,
