@@ -6,6 +6,7 @@ on:
       - "experiments/kaggle_latent/**"
       - "tools/kaggle_latent_direct.py"
       - "tests/test_kaggle_latent_direct.py"
+      - "tests/test_kaggle_sdk_surface.py"
       - "docs/kaggle-latent-direct.md"
       - ".github/workflows/latent-kaggle-direct.yml"
   workflow_dispatch:
@@ -43,6 +44,11 @@ jobs:
         run: python3 -m py_compile tools/kaggle_latent_direct.py experiments/kaggle_latent/*.py
       - name: Offline no-network contract tests
         run: python3 -m unittest discover -s tests -p 'test_kaggle_latent_direct.py' -v
+      - name: Pin Kaggle SDK and verify its imported interface without credentials
+        run: |
+          python3 -m venv /tmp/kaggle-sdk-surface
+          /tmp/kaggle-sdk-surface/bin/python -m pip install --disable-pip-version-check kaggle==2.2.4
+          /tmp/kaggle-sdk-surface/bin/python -m unittest discover -s tests -p 'test_kaggle_sdk_surface.py' -v
       - name: Construct both immutable plans; never submit on PR
         run: |
           python3 tools/kaggle_latent_direct.py --action plan --workload gpu-cuda-v1 --out-dir /tmp/kaggle-gpu-plan
